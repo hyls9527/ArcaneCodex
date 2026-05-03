@@ -23,31 +23,36 @@ impl Database {
     ";
 
     fn create_pool(db_path: &PathBuf) -> Result<SqlitePool> {
-        let manager = SqliteConnectionManager::file(db_path)
-            .with_init(|conn| {
-                conn.execute_batch(Self::PRAGMA_CONFIG)?;
-                Ok(())
-            });
-        Pool::new(manager)
-            .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))
+        let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
+            conn.execute_batch(Self::PRAGMA_CONFIG)?;
+            Ok(())
+        });
+        Pool::new(manager).map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))
     }
 
     pub fn new(app_handle: &tauri::AppHandle) -> Result<Self> {
         let db_path = get_db_path(app_handle);
         info!("Database path: {:?}", db_path);
         let pool = Self::create_pool(&db_path)?;
-        Ok(Database { db_path: Arc::new(db_path), pool })
+        Ok(Database {
+            db_path: Arc::new(db_path),
+            pool,
+        })
     }
 
     #[cfg(test)]
     pub fn new_from_path(path: &str) -> Result<Self> {
         let db_path = PathBuf::from(path);
         let pool = Self::create_pool(&db_path)?;
-        Ok(Database { db_path: Arc::new(db_path), pool })
+        Ok(Database {
+            db_path: Arc::new(db_path),
+            pool,
+        })
     }
 
     pub fn open_connection(&self) -> Result<PooledConn> {
-        self.pool.get()
+        self.pool
+            .get()
             .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))
     }
 
@@ -96,7 +101,8 @@ impl Database {
         }
 
         let conn = self.open_connection()?;
-        let user_version_after_v4: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        let user_version_after_v4: i32 =
+            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
         drop(conn);
 
         if user_version_after_v4 < 5 {
@@ -105,7 +111,8 @@ impl Database {
         }
 
         let conn = self.open_connection()?;
-        let user_version_after_v5: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        let user_version_after_v5: i32 =
+            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
         drop(conn);
 
         if user_version_after_v5 < 6 {
@@ -221,7 +228,8 @@ impl Database {
 
     fn apply_v2_comfyui_generation(&self) -> Result<()> {
         let conn = self.open_connection()?;
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             ALTER TABLE images ADD COLUMN generation_source TEXT DEFAULT 'manual_import';
             ALTER TABLE images ADD COLUMN generation_metadata JSON;
             ALTER TABLE images ADD COLUMN generation_workflow_id TEXT;
@@ -229,7 +237,8 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_images_generation_source ON images(generation_source);
 
             PRAGMA user_version = 2;
-        ")?;
+        ",
+        )?;
 
         Ok(())
     }
@@ -273,7 +282,8 @@ impl Database {
 
     fn apply_v4_multi_provider(&self) -> Result<()> {
         let conn = self.open_connection()?;
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             -- 添加 ai_provider 字段到 images 表
             ALTER TABLE images ADD COLUMN ai_provider TEXT DEFAULT 'lm_studio';
             
@@ -292,7 +302,8 @@ impl Database {
                 ('inference_timeout', '60');
             
             PRAGMA user_version = 4;
-        ")?;
+        ",
+        )?;
 
         Ok(())
     }
@@ -384,22 +395,25 @@ impl Database {
 
     fn apply_v6_unify_config(&self) -> Result<()> {
         let conn = self.open_connection()?;
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             INSERT OR IGNORE INTO settings (key, value)
                 SELECT key, value FROM app_config;
             
             DROP TABLE IF EXISTS app_config;
             
             PRAGMA user_version = 6;
-        ")?;
+        ",
+        )?;
         Ok(())
     }
 }
 
 fn get_db_path(app_handle: &tauri::AppHandle) -> PathBuf {
-    let app_data = app_handle.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap_or_default()
-    });
+    let app_data = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
 
     let _ = std::fs::create_dir_all(&app_data);
     app_data.join("arcanecodex.db")
@@ -424,7 +438,8 @@ pub fn init_database(app_handle: &tauri::AppHandle) -> Result<()> {
             if db_path.exists() {
                 std::fs::rename(&db_path, &backup_path).map_err(|rename_err| {
                     rusqlite::Error::InvalidParameterName(format!(
-                        "无法重命名损坏的数据库文件: {}", rename_err
+                        "无法重命名损坏的数据库文件: {}",
+                        rename_err
                     ))
                 })?;
                 info!("Corrupted database renamed to: {:?}", backup_path);
@@ -466,10 +481,10 @@ fn try_open_database(db_path: &PathBuf) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
     use std::time::Duration;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use tempfile::TempDir;
 
     fn setup_test_db() -> (Database, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -484,7 +499,9 @@ mod tests {
         let (db, _temp) = setup_test_db();
         let conn = db.open_connection().unwrap();
 
-        let timeout: i64 = conn.pragma_query_value(None, "busy_timeout", |row| row.get(0)).unwrap();
+        let timeout: i64 = conn
+            .pragma_query_value(None, "busy_timeout", |row| row.get(0))
+            .unwrap();
         assert_eq!(timeout, 5000, "busy_timeout should be 5000ms");
     }
 
@@ -493,7 +510,11 @@ mod tests {
         let (db, _temp) = setup_test_db();
 
         let conn = db.open_connection().unwrap();
-        conn.execute("INSERT INTO settings (key, value) VALUES ('test_key', 'initial')", []).unwrap();
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('test_key', 'initial')",
+            [],
+        )
+        .unwrap();
         drop(conn);
 
         let success1 = Arc::new(AtomicBool::new(false));
@@ -508,7 +529,11 @@ mod tests {
             let conn = db_clone1.open_connection().unwrap();
             conn.execute("BEGIN IMMEDIATE", []).unwrap();
             thread::sleep(Duration::from_millis(100));
-            conn.execute("UPDATE settings SET value = 'thread1' WHERE key = 'test_key'", []).unwrap();
+            conn.execute(
+                "UPDATE settings SET value = 'thread1' WHERE key = 'test_key'",
+                [],
+            )
+            .unwrap();
             conn.execute("COMMIT", []).unwrap();
             s1.store(true, Ordering::SeqCst);
         });
@@ -516,7 +541,10 @@ mod tests {
         let handle2 = thread::spawn(move || {
             thread::sleep(Duration::from_millis(10));
             let conn = db_clone2.open_connection().unwrap();
-            let result = conn.execute("UPDATE settings SET value = 'thread2' WHERE key = 'test_key'", []);
+            let result = conn.execute(
+                "UPDATE settings SET value = 'thread2' WHERE key = 'test_key'",
+                [],
+            );
             if result.is_ok() {
                 s2.store(true, Ordering::SeqCst);
             }
@@ -525,12 +553,23 @@ mod tests {
         handle1.join().unwrap();
         handle2.join().unwrap();
 
-        assert!(success1.load(Ordering::SeqCst) || success2.load(Ordering::SeqCst),
-            "At least one concurrent write should succeed with busy_timeout");
+        assert!(
+            success1.load(Ordering::SeqCst) || success2.load(Ordering::SeqCst),
+            "At least one concurrent write should succeed with busy_timeout"
+        );
 
         let conn = db.open_connection().unwrap();
-        let value: String = conn.query_row("SELECT value FROM settings WHERE key = 'test_key'", [], |row| row.get(0)).unwrap();
-        assert!(value == "thread1" || value == "thread2", "Final value should be from one of the threads");
+        let value: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'test_key'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            value == "thread1" || value == "thread2",
+            "Final value should be from one of the threads"
+        );
     }
 
     #[test]
@@ -538,10 +577,16 @@ mod tests {
         let (db, _temp) = setup_test_db();
 
         let conn = db.open_connection().unwrap();
-        let journal_mode: String = conn.pragma_query_value(None, "journal_mode", |row| row.get(0)).unwrap();
+        let journal_mode: String = conn
+            .pragma_query_value(None, "journal_mode", |row| row.get(0))
+            .unwrap();
         assert_eq!(journal_mode, "wal", "journal_mode should be WAL");
 
-        conn.execute("INSERT INTO settings (key, value) VALUES ('wal_test', 'data')", []).unwrap();
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('wal_test', 'data')",
+            [],
+        )
+        .unwrap();
         drop(conn);
 
         let db1 = db.clone();
@@ -549,13 +594,25 @@ mod tests {
 
         let handle1 = thread::spawn(move || {
             let conn = db1.open_connection().unwrap();
-            let value: String = conn.query_row("SELECT value FROM settings WHERE key = 'wal_test'", [], |row| row.get(0)).unwrap();
+            let value: String = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'wal_test'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
             assert_eq!(value, "data");
         });
 
         let handle2 = thread::spawn(move || {
             let conn = db2.open_connection().unwrap();
-            let value: String = conn.query_row("SELECT value FROM settings WHERE key = 'wal_test'", [], |row| row.get(0)).unwrap();
+            let value: String = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'wal_test'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
             assert_eq!(value, "data");
         });
 
@@ -578,7 +635,9 @@ mod tests {
         db.run_migrations().unwrap();
 
         let conn = db.open_connection().unwrap();
-        let timeout: i64 = conn.pragma_query_value(None, "busy_timeout", |row| row.get(0)).unwrap();
+        let timeout: i64 = conn
+            .pragma_query_value(None, "busy_timeout", |row| row.get(0))
+            .unwrap();
         assert_eq!(timeout, 5000);
     }
 
@@ -592,7 +651,9 @@ mod tests {
 
         assert!(db_path.exists(), "Database file should be created");
         let conn = db.open_connection().unwrap();
-        let timeout: i64 = conn.pragma_query_value(None, "busy_timeout", |row| row.get(0)).unwrap();
+        let timeout: i64 = conn
+            .pragma_query_value(None, "busy_timeout", |row| row.get(0))
+            .unwrap();
         assert_eq!(timeout, 5000);
     }
 }

@@ -50,9 +50,7 @@ impl LMStudioClient {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
-            .map_err(|e| {
-                AppError::validation(format!("创建 HTTP 客户端失败: {}", e))
-            })?;
+            .map_err(|e| AppError::validation(format!("创建 HTTP 客户端失败: {}", e)))?;
 
         info!("LM Studio 客户端初始化完成: {}", config.base_url);
 
@@ -62,25 +60,27 @@ impl LMStudioClient {
     pub async fn health_check(&self) -> AppResult<Vec<LMStudioModelInfo>> {
         let url = format!("{}/v1/models", self.config.base_url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .send()
             .await
-            .map_err(|e| {
-                AppError::validation(format!("健康检查请求失败: {}", e))
-            })?;
+            .map_err(|e| AppError::validation(format!("健康检查请求失败: {}", e)))?;
 
         if !resp.status().is_success() {
             return Err(AppError::validation(format!(
-                "健康检查失败: HTTP {}", resp.status()
+                "健康检查失败: HTTP {}",
+                resp.status()
             )));
         }
 
-        let body: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::validation(format!("解析健康检查响应失败: {}", e))
-        })?;
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::validation(format!("解析健康检查响应失败: {}", e)))?;
 
-        let models: Vec<LMStudioModelInfo> = body.get("data")
+        let models: Vec<LMStudioModelInfo> = body
+            .get("data")
             .and_then(|d| d.as_array())
             .map(|arr| {
                 arr.iter()
@@ -130,26 +130,27 @@ impl LMStudioClient {
             "response_format": { "type": "json_object" }
         });
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| {
-                AppError::validation(format!("AI 推理请求失败: {}", e))
-            })?;
+            .map_err(|e| AppError::validation(format!("AI 推理请求失败: {}", e)))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(AppError::validation(format!(
-                "AI 推理失败: HTTP {} - {}", status, body
+                "AI 推理失败: HTTP {} - {}",
+                status, body
             )));
         }
 
-        let body: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::validation(format!("解析 AI 响应失败: {}", e))
-        })?;
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::validation(format!("解析 AI 响应失败: {}", e)))?;
 
         let content = body
             .get("choices")
@@ -158,13 +159,14 @@ impl LMStudioClient {
             .and_then(|choice| choice.get("message"))
             .and_then(|msg| msg.get("content"))
             .and_then(|c| c.as_str())
-            .ok_or_else(|| {
-                AppError::validation("AI 响应格式不正确".to_string())
-            })?;
+            .ok_or_else(|| AppError::validation("AI 响应格式不正确".to_string()))?;
 
         let result = self.parse_ai_response(content)?;
 
-        info!("图片分析完成: {} (置信度: {:.2})", image_path, result.confidence);
+        info!(
+            "图片分析完成: {} (置信度: {:.2})",
+            image_path, result.confidence
+        );
 
         Ok(result)
     }
@@ -172,9 +174,8 @@ impl LMStudioClient {
     fn encode_image_to_base64(&self, image_path: &str) -> AppResult<String> {
         use std::fs;
 
-        let bytes = fs::read(image_path).map_err(|e| {
-            AppError::validation(format!("读取图片文件失败: {}", e))
-        })?;
+        let bytes = fs::read(image_path)
+            .map_err(|e| AppError::validation(format!("读取图片文件失败: {}", e)))?;
 
         Ok(data_encoding::BASE64.encode(&bytes))
     }
@@ -219,7 +220,10 @@ impl LMStudioClient {
 
     fn parse_ai_response(&self, content: &str) -> AppResult<AIResult> {
         let parsed: serde_json::Value = serde_json::from_str(content).map_err(|e| {
-            AppError::validation(format!("解析 AI JSON 响应失败: {} - 原始内容: {}", e, content))
+            AppError::validation(format!(
+                "解析 AI JSON 响应失败: {} - 原始内容: {}",
+                e, content
+            ))
         })?;
 
         let tags = parsed
@@ -336,7 +340,7 @@ mod tests {
     fn test_build_prompt_prd_compliant() {
         let client = LMStudioClient::new(LMStudioConfig::default()).unwrap();
         let prompt = client.build_prompt();
-        
+
         assert!(prompt.contains("请分析这张图片"));
         assert!(prompt.contains("风景"));
         assert!(prompt.contains("人物"));
@@ -426,14 +430,16 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(
             err_msg.contains("解析 AI JSON 响应失败"),
-            "错误消息应包含解析失败描述，实际: {}", err_msg
+            "错误消息应包含解析失败描述，实际: {}",
+            err_msg
         );
     }
 
     #[test]
     fn test_tc_ai_sp_003_html_error_response() {
         let client = LMStudioClient::new(LMStudioConfig::default()).unwrap();
-        let html_response = r#"<html><body><h1>502 Bad Gateway</h1><p>Server Error</p></body></html>"#;
+        let html_response =
+            r#"<html><body><h1>502 Bad Gateway</h1><p>Server Error</p></body></html>"#;
         let result = client.parse_ai_response(html_response);
         assert!(result.is_err());
     }
@@ -460,7 +466,10 @@ mod tests {
 {"tags": ["测试"], "description": "测试图片", "category": "其他", "confidence": 0.8}
 ```"#;
         let result = client.parse_ai_response(markdown_json);
-        assert!(result.is_err(), "Markdown 包裹的 JSON 应解析失败（含 ``` 标记）");
+        assert!(
+            result.is_err(),
+            "Markdown 包裹的 JSON 应解析失败（含 ``` 标记）"
+        );
     }
 
     #[test]

@@ -1,8 +1,8 @@
-use tauri::State;
-use serde::{Deserialize, Serialize};
 use crate::core::db::Database;
-use crate::core::search_index::{SearchIndexBuilder, SearchFilters, SearchResult};
+use crate::core::search_index::{SearchFilters, SearchIndexBuilder, SearchResult};
 use crate::utils::error::{AppError, AppResult};
+use serde::{Deserialize, Serialize};
+use tauri::State;
 
 #[derive(Debug, Deserialize)]
 pub struct SearchRequest {
@@ -58,7 +58,8 @@ pub async fn semantic_search(
         let existing_ids: Vec<i64> = results.iter().map(|r| r.image_id).collect();
 
         let conn = db.open_connection().map_err(AppError::database)?;
-        let escaped_query = request.query
+        let escaped_query = request
+            .query
             .replace('\\', "\\\\")
             .replace('%', "\\%")
             .replace('_', "\\_");
@@ -72,7 +73,8 @@ pub async fn semantic_search(
              JOIN images i ON n.image_id = i.id
              WHERE (n.content LIKE ?1 ESCAPE '\\' OR n.entities_json LIKE ?1 ESCAPE '\\')
              ORDER BY n.created_at DESC
-             LIMIT ?2".to_string()
+             LIMIT ?2"
+                .to_string()
         } else {
             let placeholders: Vec<String> = existing_ids.iter().map(|_| "?".to_string()).collect();
             format!(
@@ -92,9 +94,8 @@ pub async fn semantic_search(
         let mut stmt = conn.prepare(&sql).map_err(AppError::database)?;
 
         let narrative_results: Vec<SearchResult> = if existing_ids.is_empty() {
-            let rows = stmt.query_map(
-                rusqlite::params![like_pattern, remaining as i64],
-                |row| {
+            let rows = stmt
+                .query_map(rusqlite::params![like_pattern, remaining as i64], |row| {
                     Ok(SearchResult {
                         image_id: row.get(0)?,
                         file_path: row.get(1)?,
@@ -107,24 +108,21 @@ pub async fn semantic_search(
                         match_count: 1,
                         relevance_score: 0.5,
                     })
-                },
-            ).map_err(AppError::database)?;
+                })
+                .map_err(AppError::database)?;
 
             rows.filter_map(|r| r.ok()).collect()
         } else {
-            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-                Box::new(like_pattern),
-                Box::new(remaining as i64),
-            ];
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+                vec![Box::new(like_pattern), Box::new(remaining as i64)];
             for id in &existing_ids {
                 params.push(Box::new(*id));
             }
             let param_refs: Vec<&dyn rusqlite::types::ToSql> =
                 params.iter().map(|p| p.as_ref()).collect();
 
-            let rows = stmt.query_map(
-                &param_refs[..],
-                |row| {
+            let rows = stmt
+                .query_map(&param_refs[..], |row| {
                     Ok(SearchResult {
                         image_id: row.get(0)?,
                         file_path: row.get(1)?,
@@ -137,8 +135,8 @@ pub async fn semantic_search(
                         match_count: 1,
                         relevance_score: 0.5,
                     })
-                },
-            ).map_err(AppError::database)?;
+                })
+                .map_err(AppError::database)?;
 
             rows.filter_map(|r| r.ok()).collect()
         };

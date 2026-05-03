@@ -1,4 +1,4 @@
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 
 pub fn calculate_sha256(file_path: &Path) -> std::io::Result<String> {
@@ -13,7 +13,7 @@ pub fn calculate_sha256(file_path: &Path) -> std::io::Result<String> {
 mod tests {
     use super::*;
     use std::io::Write;
-    
+
     #[test]
     fn test_calculate_sha256() {
         let temp_dir = std::env::temp_dir();
@@ -22,10 +22,10 @@ mod tests {
             let mut file = std::fs::File::create(&test_file).unwrap();
             file.write_all(b"Hello, World!").unwrap();
         }
-        
+
         let hash = calculate_sha256(&test_file).unwrap();
         assert_eq!(hash.len(), 64); // SHA256 produces 64 hex chars
-        
+
         std::fs::remove_file(&test_file).ok();
     }
 }

@@ -118,9 +118,7 @@ impl DeduplicationScanner {
             })
             .map_err(AppError::database)?;
 
-        let images: Vec<ImageRow> = rows
-            .filter_map(|r| r.ok())
-            .collect();
+        let images: Vec<ImageRow> = rows.filter_map(|r| r.ok()).collect();
 
         info!("开始扫描 {} 张图片的重复项", images.len());
 
@@ -146,7 +144,9 @@ impl DeduplicationScanner {
         let mut visited: HashSet<(usize, usize)> = HashSet::new();
 
         for (i, hash) in phash_values.iter().enumerate() {
-            let neighbors = tree.search(hash, self.threshold, |a: &u64, b: &u64| (a ^ b).count_ones());
+            let neighbors = tree.search(hash, self.threshold, |a: &u64, b: &u64| {
+                (a ^ b).count_ones()
+            });
 
             for (distance, j) in neighbors {
                 if i == j {
@@ -164,7 +164,9 @@ impl DeduplicationScanner {
 
         groups.sort_by(|a, b| {
             b.images.len().cmp(&a.images.len()).then_with(|| {
-                b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal)
+                b.similarity
+                    .partial_cmp(&a.similarity)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
         });
 
@@ -223,7 +225,8 @@ impl DeduplicationScanner {
                     })
                     .collect();
 
-                let avg_similarity = self.calculate_group_similarity(&mut dup_images, pairs, images);
+                let avg_similarity =
+                    self.calculate_group_similarity(&mut dup_images, pairs, images);
 
                 DuplicateGroup {
                     images: dup_images,
@@ -277,9 +280,8 @@ impl DeduplicationScanner {
 }
 
 fn phash_to_u64(phash: &str) -> AppResult<u64> {
-    let bytes = hex::decode(phash).map_err(|e| {
-        AppError::validation(format!("解析 phash 失败: {:?}", e))
-    })?;
+    let bytes = hex::decode(phash)
+        .map_err(|e| AppError::validation(format!("解析 phash 失败: {:?}", e)))?;
 
     let mut result: u64 = 0;
     for &byte in &bytes {
@@ -431,16 +433,16 @@ mod tests {
         assert_eq!(ImageProcessor::hamming_distance("ff", "00").unwrap(), 8);
         assert_eq!(ImageProcessor::hamming_distance("f0", "0f").unwrap(), 8);
     }
-    
+
     #[test]
     fn test_scan_performance_5000_images() {
         use std::time::Instant;
-        
+
         // This test verifies that scanning 5000 images completes in < 30s
         // We use a smaller subset (100 images) for unit testing but verify the algorithm scales
         let (db, _temp) = setup_test_db();
         let conn = db.open_connection().unwrap();
-        
+
         // Insert 100 images with varying phash values
         let mut inserts = String::new();
         for i in 0..100 {
@@ -448,38 +450,42 @@ mod tests {
             inserts.push_str(&format!(
                 "INSERT INTO images (file_path, file_name, file_size, file_hash, ai_status, phash) 
                  VALUES ('/test/{}.jpg', '{}.jpg', {}, 'hash{}', 'completed', '{}');\n",
-                i, i, 1000 + i, i, phash
+                i,
+                i,
+                1000 + i,
+                i,
+                phash
             ));
         }
         conn.execute_batch(&inserts).unwrap();
-        
+
         let scanner = DeduplicationScanner::new(Some(10));
         let start = Instant::now();
         let result = scanner.scan(&db).unwrap();
         let duration = start.elapsed();
-        
+
         // Verify scan completed
         assert_eq!(result.total_scanned, 100);
-        
+
         // For 100 images: 100*99/2 = 4950 comparisons
         // Extrapolating to 5000 images: 5000*4999/2 = 12,497,500 comparisons
         // Expected time for 5000: duration * (12497500 / 4950) ≈ duration * 2525
         // If 100 images takes < 12ms, then 5000 should take < 30s
-        
+
         println!("100 images scan took: {:?}", duration);
-        
+
         // The algorithm is O(n²) but each comparison is very fast (string parsing + bit counting)
         // On i7-12700H, this should easily complete within 30s for 5000 images
     }
-    
+
     #[test]
     fn test_threshold_90_percent_similarity() {
         // 90% similarity means Hamming distance <= 6 (64 * 0.1 = 6.4, rounded to 6)
         // Test that threshold of 6 correctly filters at 90% similarity
-        
+
         let (db, _temp) = setup_test_db();
         let conn = db.open_connection().unwrap();
-        
+
         // Insert 3 images with varying distances:
         // Image 1: phash = "0000000000000000" (baseline)
         // Image 2: phash = "0000000000000006" (distance = 2, ~97% similarity)
@@ -491,8 +497,9 @@ mod tests {
              VALUES ('/test/2.jpg', '2.jpg', 2000, 'hash2', 'completed', '0000000000000006');
              INSERT INTO images (file_path, file_name, file_size, file_hash, ai_status, phash) 
              VALUES ('/test/3.jpg', '3.jpg', 3000, 'hash3', 'completed', '00000000000000ff');",
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // With threshold = 6 (90% similarity), should find:
         // - Image 1 & 2: distance 2 <= 6 ✓ (detected as duplicate)
         // - Image 1 & 3: distance 8 > 6 ✗ (not duplicate)
@@ -500,20 +507,20 @@ mod tests {
         // All three images are in the same cluster via transitive closure
         let scanner = DeduplicationScanner::new(Some(6));
         let result = scanner.scan(&db).unwrap();
-        
+
         assert_eq!(result.total_scanned, 3);
         assert_eq!(result.total_duplicates, 3); // All three in one cluster
         assert_eq!(result.groups.len(), 1); // One group with 3 images
         assert_eq!(result.groups[0].images.len(), 3);
         assert!(result.threshold == 6);
     }
-    
+
     #[test]
     fn test_threshold_filters_correctly() {
         // Verify that different threshold values correctly filter duplicates
         let (db, _temp) = setup_test_db();
         let conn = db.open_connection().unwrap();
-        
+
         // Insert images with known distances
         conn.execute_batch(
             "INSERT INTO images (file_path, file_name, file_size, file_hash, ai_status, phash) 
@@ -522,25 +529,26 @@ mod tests {
              VALUES ('/test/2.jpg', '2.jpg', 2000, 'hash2', 'completed', '000000000000000a');
              INSERT INTO images (file_path, file_name, file_size, file_hash, ai_status, phash) 
              VALUES ('/test/3.jpg', '3.jpg', 3000, 'hash3', 'completed', '00000000000000ff');",
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Image distances (hex byte XOR popcount):
         // 1 & 2: "00" XOR "0a" = 0x0a = 0b1010 → 2 bits
         // 1 & 3: "00" XOR "ff" = 0xff = 0b11111111 → 8 bits
         // 2 & 3: "0a" XOR "ff" = 0xf5 = 0b11110101 → 6 bits
-        
+
         // With strict threshold (1), no duplicates should be found
         let strict_scanner = DeduplicationScanner::new(Some(1));
         let strict_result = strict_scanner.scan(&db).unwrap();
         assert_eq!(strict_result.total_duplicates, 0);
         assert!(strict_result.groups.is_empty());
-        
+
         // With medium threshold (2), should find 1&2 as duplicate
         let medium_scanner = DeduplicationScanner::new(Some(2));
         let medium_result = medium_scanner.scan(&db).unwrap();
         assert_eq!(medium_result.total_duplicates, 2);
         assert_eq!(medium_result.groups.len(), 1);
-        
+
         // With loose threshold (10), should find all three as duplicates
         let loose_scanner = DeduplicationScanner::new(Some(10));
         let loose_result = loose_scanner.scan(&db).unwrap();

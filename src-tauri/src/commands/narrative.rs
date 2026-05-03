@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tauri::State;
 use crate::core::ai_queue::AITaskQueue;
 use crate::utils::error::{AppError, AppResult};
 use rusqlite::params;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NarrativeResult {
@@ -29,9 +29,7 @@ const PLACE_PREFIXES: &[&str] = &["在", "去", "到", "从"];
 const PLACE_SUFFIXES: &[&str] = &[
     "的", "那", "玩", "出差", "旅行", "旅游", "逛", "吃饭", "拍照", "看", "住", "走",
 ];
-const TIME_KEYWORDS: &[&str] = &[
-    "去年", "今年", "昨天", "今天", "上个月", "这个月", "前年",
-];
+const TIME_KEYWORDS: &[&str] = &["去年", "今年", "昨天", "今天", "上个月", "这个月", "前年"];
 const WEEKDAY_PREFIXES: &[&str] = &["周", "星期"];
 const WEEKDAY_SUFFIXES: &[&str] = &["一", "二", "三", "四", "五", "六", "日", "天"];
 
@@ -226,7 +224,7 @@ pub async fn get_narratives(
     let conn = db.open_connection()?;
 
     let mut stmt = conn.prepare(
-        "SELECT id, image_id, content, entities_json FROM narratives WHERE image_id = ?1"
+        "SELECT id, image_id, content, entities_json FROM narratives WHERE image_id = ?1",
     )?;
 
     let rows = stmt.query_map(params![image_id], |row| {
@@ -272,7 +270,7 @@ pub async fn query_associations(
          JOIN images i ON n.image_id = i.id \
          WHERE n.content LIKE ?1 ESCAPE '\\' OR n.entities_json LIKE ?1 ESCAPE '\\' \
          ORDER BY n.updated_at DESC \
-         LIMIT ?2"
+         LIMIT ?2",
     )?;
 
     let rows = stmt.query_map(params![pattern, limit], |row| {
@@ -303,30 +301,21 @@ mod tests {
     #[test]
     fn test_extract_entities_person() {
         let entities = extract_entities("我和小明一起去公园玩");
-        let persons: Vec<_> = entities
-            .iter()
-            .filter(|e| e["type"] == "person")
-            .collect();
+        let persons: Vec<_> = entities.iter().filter(|e| e["type"] == "person").collect();
         assert!(!persons.is_empty());
     }
 
     #[test]
     fn test_extract_entities_place() {
         let entities = extract_entities("我去北京出差");
-        let places: Vec<_> = entities
-            .iter()
-            .filter(|e| e["type"] == "place")
-            .collect();
+        let places: Vec<_> = entities.iter().filter(|e| e["type"] == "place").collect();
         assert!(!places.is_empty());
     }
 
     #[test]
     fn test_extract_entities_time() {
         let entities = extract_entities("去年我们去旅行");
-        let times: Vec<_> = entities
-            .iter()
-            .filter(|e| e["type"] == "time")
-            .collect();
+        let times: Vec<_> = entities.iter().filter(|e| e["type"] == "time").collect();
         assert!(!times.is_empty());
     }
 
@@ -352,9 +341,27 @@ mod tests {
         eprintln!("Persons: {:?}", persons);
         eprintln!("Places: {:?}", places);
         eprintln!("Times: {:?}", times);
-        assert!(persons.iter().any(|p| p.contains("老王") || "老王".contains(p)), "Expected '老王' or substring, got: {:?}", persons);
-        assert!(places.iter().any(|p| p.contains("杭州") || "杭州".contains(p)), "Expected '杭州' or substring, got: {:?}", places);
-        assert!(times.iter().any(|t| t.contains("去年") || "去年".contains(t)), "Expected '去年' or substring, got: {:?}", times);
+        assert!(
+            persons
+                .iter()
+                .any(|p| p.contains("老王") || "老王".contains(p)),
+            "Expected '老王' or substring, got: {:?}",
+            persons
+        );
+        assert!(
+            places
+                .iter()
+                .any(|p| p.contains("杭州") || "杭州".contains(p)),
+            "Expected '杭州' or substring, got: {:?}",
+            places
+        );
+        assert!(
+            times
+                .iter()
+                .any(|t| t.contains("去年") || "去年".contains(t)),
+            "Expected '去年' or substring, got: {:?}",
+            times
+        );
     }
 
     #[test]
@@ -368,10 +375,7 @@ mod tests {
     #[test]
     fn test_extract_entities_weekday() {
         let entities = extract_entities("周三开会");
-        let times: Vec<_> = entities
-            .iter()
-            .filter(|e| e["type"] == "time")
-            .collect();
+        let times: Vec<_> = entities.iter().filter(|e| e["type"] == "time").collect();
         assert!(!times.is_empty());
     }
 

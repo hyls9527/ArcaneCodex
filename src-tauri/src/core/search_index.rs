@@ -4,7 +4,7 @@ use jieba_rs::Jieba;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 static GLOBAL_JIEBA: OnceLock<Jieba> = OnceLock::new();
 
@@ -30,7 +30,12 @@ pub fn clear_search_cache() {
     }
 }
 
-fn make_cache_key(query: &str, filters: Option<&SearchFilters>, limit: usize, offset: usize) -> u64 {
+fn make_cache_key(
+    query: &str,
+    filters: Option<&SearchFilters>,
+    limit: usize,
+    offset: usize,
+) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     query.hash(&mut hasher);
@@ -50,13 +55,12 @@ fn make_cache_key(query: &str, filters: Option<&SearchFilters>, limit: usize, of
 }
 
 const STOP_WORDS: &[&str] = &[
-    "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个",
-    "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "与", "把",
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "in", "on", "at", "to", "for", "of", "with", "by", "from", "as", "into",
-    "and", "or", "but", "not", "no", "all", "any", "both", "each", "few",
-    "more", "most", "other", "some", "such", "that", "this", "these", "those",
-    "it", "its", "this", "these", "those", "what", "which", "who", "whom",
+    "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个", "上", "也",
+    "很", "到", "说", "要", "去", "你", "会", "着", "与", "把", "a", "an", "the", "is", "are",
+    "was", "were", "be", "been", "being", "in", "on", "at", "to", "for", "of", "with", "by",
+    "from", "as", "into", "and", "or", "but", "not", "no", "all", "any", "both", "each", "few",
+    "more", "most", "other", "some", "such", "that", "this", "these", "those", "it", "its", "this",
+    "these", "those", "what", "which", "who", "whom",
 ];
 
 pub struct SearchIndexBuilder;
@@ -136,11 +140,7 @@ impl SearchIndexBuilder {
 
         tx.commit().map_err(AppError::database)?;
 
-        info!(
-            "为图片 {} 构建搜索索引: {} 个词条",
-            image_id,
-            tokens.len()
-        );
+        info!("为图片 {} 构建搜索索引: {} 个词条", image_id, tokens.len());
 
         clear_search_cache();
 
@@ -398,12 +398,13 @@ mod tests {
         )
         .unwrap();
 
-        let image_id: i64 = conn.query_row(
-            "SELECT id FROM images WHERE file_hash = 'abc123'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
+        let image_id: i64 = conn
+            .query_row(
+                "SELECT id FROM images WHERE file_hash = 'abc123'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         let builder = SearchIndexBuilder::new();
         let tags: Vec<String> = ["cat", "animal", "pet", "cute", "feline"]
@@ -543,11 +544,22 @@ mod tests {
             [],
         ).unwrap();
 
-        let image_id: i64 = conn.query_row("SELECT id FROM images WHERE file_hash = 'cache123'", [], |row| row.get(0)).unwrap();
+        let image_id: i64 = conn
+            .query_row(
+                "SELECT id FROM images WHERE file_hash = 'cache123'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         let builder = SearchIndexBuilder::new();
-        let tags: Vec<String> = ["car", "vehicle", "red", "road"].iter().map(|s| s.to_string()).collect();
-        builder.build_for_image(&db, image_id, "A red car on the road", &tags, "object").unwrap();
+        let tags: Vec<String> = ["car", "vehicle", "red", "road"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        builder
+            .build_for_image(&db, image_id, "A red car on the road", &tags, "object")
+            .unwrap();
 
         clear_search_cache();
 
@@ -570,18 +582,34 @@ mod tests {
             [],
         ).unwrap();
 
-        let image_id: i64 = conn.query_row("SELECT id FROM images WHERE file_hash = 'inv123'", [], |row| row.get(0)).unwrap();
+        let image_id: i64 = conn
+            .query_row(
+                "SELECT id FROM images WHERE file_hash = 'inv123'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         let builder = SearchIndexBuilder::new();
         let tags: Vec<String> = ["sky", "blue"].iter().map(|s| s.to_string()).collect();
-        builder.build_for_image(&db, image_id, "A blue sky", &tags, "landscape").unwrap();
+        builder
+            .build_for_image(&db, image_id, "A blue sky", &tags, "landscape")
+            .unwrap();
 
         clear_search_cache();
 
         let results1 = builder.search(&db, "blue sky", None, 10, 0).unwrap();
         assert!(!results1.is_empty());
 
-        builder.build_for_image(&db, image_id, "Updated description with clouds", &tags, "landscape").unwrap();
+        builder
+            .build_for_image(
+                &db,
+                image_id,
+                "Updated description with clouds",
+                &tags,
+                "landscape",
+            )
+            .unwrap();
 
         let results2 = builder.search(&db, "blue sky", None, 10, 0).unwrap();
         assert!(!results2.is_empty());
@@ -603,14 +631,36 @@ mod tests {
             [],
         ).unwrap();
 
-        let id1: i64 = conn.query_row("SELECT id FROM images WHERE file_hash = 'multi123'", [], |row| row.get(0)).unwrap();
-        let id2: i64 = conn.query_row("SELECT id FROM images WHERE file_hash = 'multi456'", [], |row| row.get(0)).unwrap();
+        let id1: i64 = conn
+            .query_row(
+                "SELECT id FROM images WHERE file_hash = 'multi123'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let id2: i64 = conn
+            .query_row(
+                "SELECT id FROM images WHERE file_hash = 'multi456'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         let builder = SearchIndexBuilder::new();
-        let tags1: Vec<String> = ["forest", "green", "nature"].iter().map(|s| s.to_string()).collect();
-        let tags2: Vec<String> = ["city", "street", "busy"].iter().map(|s| s.to_string()).collect();
-        builder.build_for_image(&db, id1, "A green forest", &tags1, "landscape").unwrap();
-        builder.build_for_image(&db, id2, "A busy city street", &tags2, "cityscape").unwrap();
+        let tags1: Vec<String> = ["forest", "green", "nature"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let tags2: Vec<String> = ["city", "street", "busy"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        builder
+            .build_for_image(&db, id1, "A green forest", &tags1, "landscape")
+            .unwrap();
+        builder
+            .build_for_image(&db, id2, "A busy city street", &tags2, "cityscape")
+            .unwrap();
 
         clear_search_cache();
 
@@ -633,11 +683,19 @@ mod tests {
             [],
         ).unwrap();
 
-        let image_id: i64 = conn.query_row("SELECT id FROM images WHERE file_hash = 'clr123'", [], |row| row.get(0)).unwrap();
+        let image_id: i64 = conn
+            .query_row(
+                "SELECT id FROM images WHERE file_hash = 'clr123'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         let builder = SearchIndexBuilder::new();
         let tags: Vec<String> = ["test"].iter().map(|s| s.to_string()).collect();
-        builder.build_for_image(&db, image_id, "A test image", &tags, "object").unwrap();
+        builder
+            .build_for_image(&db, image_id, "A test image", &tags, "object")
+            .unwrap();
 
         clear_search_cache();
 

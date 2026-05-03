@@ -1,10 +1,10 @@
-use tauri::State;
-use serde::{Serialize, Deserialize};
 use crate::core::db::Database;
 use crate::utils::error::{AppError, AppResult};
-use tracing::info;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tauri::State;
+use tracing::info;
 
 const SENSITIVE_DIRS: &[&str] = &[
     "C:\\Windows",
@@ -55,35 +55,40 @@ pub struct ImageMetadata {
 }
 
 #[tauri::command]
-pub fn export_data(
-    db: State<'_, Database>,
-    request: ExportRequest,
-) -> AppResult<ExportResult> {
-    info!("开始导出数据: format={}, path={}", request.format, request.output_path);
-    
+pub fn export_data(db: State<'_, Database>, request: ExportRequest) -> AppResult<ExportResult> {
+    info!(
+        "开始导出数据: format={}, path={}",
+        request.format, request.output_path
+    );
+
     let output_path = PathBuf::from(&request.output_path);
-    
+
     validate_export_path(&output_path)?;
-    
+
     if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            AppError::validation(format!("创建输出目录失败: {}", e))
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|e| AppError::validation(format!("创建输出目录失败: {}", e)))?;
     }
-    
+
     let metadata_list = fetch_image_metadata(&db, &request)?;
-    
+
     let exported_count = match request.format.as_str() {
         "json" => export_to_json(&metadata_list, &output_path)?,
         "csv" => export_to_csv(&metadata_list, &output_path)?,
-        _ => return Err(AppError::validation(format!(
-            "不支持的导出格式: {}。支持的格式: json, csv",
-            request.format
-        ))),
+        _ => {
+            return Err(AppError::validation(format!(
+                "不支持的导出格式: {}。支持的格式: json, csv",
+                request.format
+            )))
+        }
     };
-    
-    info!("导出完成: {} 条记录 -> {}", exported_count, output_path.display());
-    
+
+    info!(
+        "导出完成: {} 条记录 -> {}",
+        exported_count,
+        output_path.display()
+    );
+
     Ok(ExportResult {
         exported_count,
         output_file: output_path.to_string_lossy().to_string(),
@@ -93,9 +98,9 @@ pub fn export_data(
 
 fn fetch_image_metadata(db: &Database, request: &ExportRequest) -> AppResult<Vec<ImageMetadata>> {
     let conn = db.open_connection()?;
-    
+
     let mut metadata_list = Vec::new();
-    
+
     match &request.image_ids {
         Some(ids) => {
             let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
@@ -106,38 +111,35 @@ fn fetch_image_metadata(db: &Database, request: &ExportRequest) -> AppResult<Vec
                  FROM images WHERE id IN ({}) ORDER BY id",
                 placeholders.join(",")
             );
-            
+
             let mut stmt = conn.prepare(&query)?;
-            let params: Vec<&dyn rusqlite::types::ToSql> = ids.iter()
+            let params: Vec<&dyn rusqlite::types::ToSql> = ids
+                .iter()
                 .map(|id| id as &dyn rusqlite::types::ToSql)
                 .collect();
-            
-            let rows = stmt.query_map(params.as_slice(), |row| {
-                map_row_to_metadata(row)
-            })?;
-            
+
+            let rows = stmt.query_map(params.as_slice(), |row| map_row_to_metadata(row))?;
+
             for row in rows {
                 metadata_list.push(row?);
             }
-        },
+        }
         None => {
             let mut stmt = conn.prepare(
                 "SELECT id, file_name, file_path, file_size, width, height, file_hash, \
                  category, ai_description, ai_tags, ai_confidence, ai_model, \
                  imported_at, ai_processed_at, exif_data, thumbnail_path \
-                 FROM images ORDER BY id"
+                 FROM images ORDER BY id",
             )?;
-            
-            let rows = stmt.query_map([], |row| {
-                map_row_to_metadata(row)
-            })?;
-            
+
+            let rows = stmt.query_map([], |row| map_row_to_metadata(row))?;
+
             for row in rows {
                 metadata_list.push(row?);
             }
         }
     }
-    
+
     Ok(metadata_list)
 }
 
@@ -163,24 +165,22 @@ fn map_row_to_metadata(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImageMetadat
 }
 
 fn export_to_json(metadata_list: &[ImageMetadata], output_path: &PathBuf) -> AppResult<usize> {
-    let json = serde_json::to_string_pretty(metadata_list).map_err(|e| {
-        AppError::validation(format!("序列化为 JSON 失败: {}", e))
-    })?;
-    
-    fs::write(output_path, json).map_err(|e| {
-        AppError::validation(format!("写入 JSON 文件失败: {}", e))
-    })?;
-    
+    let json = serde_json::to_string_pretty(metadata_list)
+        .map_err(|e| AppError::validation(format!("序列化为 JSON 失败: {}", e)))?;
+
+    fs::write(output_path, json)
+        .map_err(|e| AppError::validation(format!("写入 JSON 文件失败: {}", e)))?;
+
     Ok(metadata_list.len())
 }
 
 fn export_to_csv(metadata_list: &[ImageMetadata], output_path: &PathBuf) -> AppResult<usize> {
     let mut csv_content = String::new();
-    
+
     csv_content.push_str("id,file_name,file_path,file_size,width,height,file_hash,");
     csv_content.push_str("category,ai_description,ai_tags,ai_confidence,ai_model,");
     csv_content.push_str("imported_at,ai_processed_at,exif_data,thumbnail_path\n");
-    
+
     for meta in metadata_list {
         csv_content.push_str(&format!(
             "{},\"{}\",\"{}\",{},{},{},\"{}\",\"{}\",\"{}\",\"{}\",{},{},\"{}\",\"{}\",\"{}\",\"{}\"\n",
@@ -202,11 +202,10 @@ fn export_to_csv(metadata_list: &[ImageMetadata], output_path: &PathBuf) -> AppR
             escape_csv(&meta.thumbnail_path),
         ));
     }
-    
-    fs::write(output_path, csv_content).map_err(|e| {
-        AppError::validation(format!("写入 CSV 文件失败: {}", e))
-    })?;
-    
+
+    fs::write(output_path, csv_content)
+        .map_err(|e| AppError::validation(format!("写入 CSV 文件失败: {}", e)))?;
+
     Ok(metadata_list.len())
 }
 
@@ -216,20 +215,23 @@ fn escape_csv(value: &str) -> String {
 
 fn validate_export_path(path: &PathBuf) -> AppResult<()> {
     let path_str = path.to_string_lossy().to_lowercase();
-    
+
     for sensitive_dir in SENSITIVE_DIRS {
         let sensitive_lower = sensitive_dir.to_lowercase();
         if path_str.starts_with(&sensitive_lower) {
             return Err(AppError::validation(format!(
-                "不允许导出到系统目录: {}", sensitive_dir
+                "不允许导出到系统目录: {}",
+                sensitive_dir
             )));
         }
     }
-    
+
     if path.components().any(|c| c.as_os_str() == "..") {
-        return Err(AppError::validation("导出路径不能包含路径穿越 (..)".to_string()));
+        return Err(AppError::validation(
+            "导出路径不能包含路径穿越 (..)".to_string(),
+        ));
     }
-    
+
     Ok(())
 }
 
@@ -237,14 +239,15 @@ fn validate_export_path(path: &PathBuf) -> AppResult<()> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    
+
     fn setup_test_db() -> (Database, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test_export.db");
         let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        
+
         let conn = db.open_connection().unwrap();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE images (
                 id INTEGER PRIMARY KEY,
                 file_name TEXT,
@@ -263,11 +266,13 @@ mod tests {
                 exif_data TEXT,
                 thumbnail_path TEXT
             );
-        ").unwrap();
-        
+        ",
+        )
+        .unwrap();
+
         (db, temp_dir)
     }
-    
+
     #[test]
     fn test_export_request_deserialize() {
         let json = r#"{"format": "json", "output_path": "/tmp/export.json"}"#;
@@ -276,7 +281,7 @@ mod tests {
         assert_eq!(request.output_path, "/tmp/export.json");
         assert!(request.image_ids.is_none());
     }
-    
+
     #[test]
     fn test_export_request_with_image_ids() {
         let json = r#"{"format": "csv", "output_path": "/tmp/export.csv", "image_ids": [1, 2, 3]}"#;
@@ -284,7 +289,7 @@ mod tests {
         assert_eq!(request.format, "csv");
         assert_eq!(request.image_ids, Some(vec![1, 2, 3]));
     }
-    
+
     #[test]
     fn test_export_result_serialize() {
         let result = ExportResult {
@@ -292,12 +297,12 @@ mod tests {
             output_file: "/tmp/export.json".to_string(),
             format: "json".to_string(),
         };
-        
+
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("10"));
         assert!(json.contains("export.json"));
     }
-    
+
     fn insert_test_image(db: &Database, id: i64) {
         let conn = db.open_connection().unwrap();
         conn.execute(
@@ -323,16 +328,16 @@ mod tests {
                 "{}",
                 format!("C:/thumbs/{}.webp", id),
             ],
-        ).unwrap();
+        )
+        .unwrap();
     }
-    
+
     fn export_data_sync(db: &Database, request: ExportRequest) -> AppResult<ExportResult> {
         let output_path = PathBuf::from(&request.output_path);
 
         if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                AppError::validation(format!("创建输出目录失败: {}", e))
-            })?;
+            fs::create_dir_all(parent)
+                .map_err(|e| AppError::validation(format!("创建输出目录失败: {}", e)))?;
         }
 
         // Validate format first before querying database
@@ -477,7 +482,11 @@ mod tests {
 
         let request = ExportRequest {
             format: "xml".to_string(),
-            output_path: temp_dir.path().join("test.xml").to_string_lossy().to_string(),
+            output_path: temp_dir
+                .path()
+                .join("test.xml")
+                .to_string_lossy()
+                .to_string(),
             image_ids: None,
         };
 
@@ -486,10 +495,11 @@ mod tests {
         if let Err(e) = result {
             let err_str = e.to_string();
             assert!(
-                err_str.contains("不支持的导出格式") || 
-                err_str.contains("unsupported") ||
-                err_str.contains("xml"),
-                "Error should mention unsupported format, got: {}", err_str
+                err_str.contains("不支持的导出格式")
+                    || err_str.contains("unsupported")
+                    || err_str.contains("xml"),
+                "Error should mention unsupported format, got: {}",
+                err_str
             );
         }
     }

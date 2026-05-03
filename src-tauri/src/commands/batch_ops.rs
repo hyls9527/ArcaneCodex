@@ -1,9 +1,9 @@
-use crate::core::db::Database;
 use crate::core::ai_queue::AITaskQueue;
-use crate::utils::error::{AppResult, AppError};
+use crate::core::db::Database;
+use crate::utils::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-use tauri::State;
 use std::io::{BufRead, BufReader, Write};
+use tauri::State;
 use tracing::warn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,20 +30,24 @@ pub fn start_batch_ai_tag(
     }
 
     let conn = db.open_connection()?;
-    
+
     let mut enqueued_count = 0;
     for &image_id in &request.image_ids {
         let mut stmt = conn.prepare(
-            "SELECT id, file_path FROM images WHERE id = ?1 AND ai_status IN ('pending', 'failed')"
+            "SELECT id, file_path FROM images WHERE id = ?1 AND ai_status IN ('pending', 'failed')",
         )?;
-        
-        let rows: Vec<(i64, String)> = stmt.query_map(
-            rusqlite::params![image_id],
-            |row| Ok((row.get(0)?, row.get(1)?))
-        )?.filter_map(|r| r.ok()).collect();
+
+        let rows: Vec<(i64, String)> = stmt
+            .query_map(rusqlite::params![image_id], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         if let Some((id, path)) = rows.into_iter().next() {
-            ai_queue.add_task(id, &path).map_err(|e| AppError::ai(e.to_string()))?;
+            ai_queue
+                .add_task(id, &path)
+                .map_err(|e| AppError::ai(e.to_string()))?;
             enqueued_count += 1;
         }
     }
@@ -52,11 +56,9 @@ pub fn start_batch_ai_tag(
 }
 
 #[tauri::command]
-pub fn get_batch_ai_status(
-    ai_queue: State<'_, AITaskQueue>,
-) -> AppResult<BatchTaskStatus> {
+pub fn get_batch_ai_status(ai_queue: State<'_, AITaskQueue>) -> AppResult<BatchTaskStatus> {
     let stats = ai_queue.get_stats();
-    
+
     Ok(BatchTaskStatus {
         total: stats.get("total").copied().unwrap_or(0),
         completed: stats.get("completed").copied().unwrap_or(0),
@@ -66,25 +68,19 @@ pub fn get_batch_ai_status(
 }
 
 #[tauri::command]
-pub fn pause_batch_ai_task(
-    ai_queue: State<'_, AITaskQueue>,
-) -> AppResult<()> {
+pub fn pause_batch_ai_task(ai_queue: State<'_, AITaskQueue>) -> AppResult<()> {
     ai_queue.pause();
     Ok(())
 }
 
 #[tauri::command]
-pub fn resume_batch_ai_task(
-    ai_queue: State<'_, AITaskQueue>,
-) -> AppResult<()> {
+pub fn resume_batch_ai_task(ai_queue: State<'_, AITaskQueue>) -> AppResult<()> {
     ai_queue.resume();
     Ok(())
 }
 
 #[tauri::command]
-pub fn cancel_batch_ai_task(
-    ai_queue: State<'_, AITaskQueue>,
-) -> AppResult<usize> {
+pub fn cancel_batch_ai_task(ai_queue: State<'_, AITaskQueue>) -> AppResult<usize> {
     let cancelled = ai_queue.clear_pending();
     Ok(cancelled)
 }
@@ -152,17 +148,19 @@ fn apply_tag_operation(
     new_tags: &[String],
     operation: &TagOperation,
 ) -> AppResult<()> {
-    let current_tags_json: String = conn.query_row(
-        "SELECT ai_tags FROM images WHERE id = ?1",
-        rusqlite::params![image_id],
-        |row| row.get(0)
-    ).unwrap_or("[]".to_string());
+    let current_tags_json: String = conn
+        .query_row(
+            "SELECT ai_tags FROM images WHERE id = ?1",
+            rusqlite::params![image_id],
+            |row| row.get(0),
+        )
+        .unwrap_or("[]".to_string());
 
-    let mut current_tags: Vec<String> = serde_json::from_str(&current_tags_json)
-        .unwrap_or_default();
+    let mut current_tags: Vec<String> =
+        serde_json::from_str(&current_tags_json).unwrap_or_default();
 
     let old_tags = current_tags.clone();
-    
+
     let updated_tags = match operation {
         TagOperation::Add => {
             let mut merged = current_tags;
@@ -177,9 +175,7 @@ fn apply_tag_operation(
             current_tags.retain(|tag| !new_tags.contains(tag));
             current_tags
         }
-        TagOperation::Replace => {
-            new_tags.to_vec()
-        }
+        TagOperation::Replace => new_tags.to_vec(),
     };
 
     let updated_tags_json = serde_json::to_string(&updated_tags)
@@ -233,28 +229,30 @@ pub fn batch_export(
     }
 
     let conn = db.open_connection()?;
-    
+
     let mut export_data = Vec::new();
     for &image_id in &request.image_ids {
         let mut stmt = conn.prepare(
             "SELECT id, file_path, file_name, file_size, ai_tags, ai_description, ai_category, ai_confidence 
              FROM images WHERE id = ?1"
         )?;
-        
+
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(i64, String, String, i64, String, String, String, f64)> = stmt.query_map(
-            rusqlite::params![image_id],
-            |row| Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-            ))
-        )?.filter_map(|r| r.ok()).collect();
+        let rows: Vec<(i64, String, String, i64, String, String, String, f64)> = stmt
+            .query_map(rusqlite::params![image_id], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         if let Some(row) = rows.into_iter().next() {
             let tags: Vec<String> = serde_json::from_str(&row.4).unwrap_or_default();
@@ -263,16 +261,32 @@ pub fn batch_export(
                 file_path: row.1,
                 file_name: row.2,
                 file_size: row.3,
-                ai_tags: if request.include_metadata { Some(tags) } else { None },
-                ai_description: if request.include_metadata { Some(row.5) } else { None },
-                ai_category: if request.include_metadata { Some(row.6) } else { None },
-                ai_confidence: if request.include_metadata { Some(row.7) } else { None },
+                ai_tags: if request.include_metadata {
+                    Some(tags)
+                } else {
+                    None
+                },
+                ai_description: if request.include_metadata {
+                    Some(row.5)
+                } else {
+                    None
+                },
+                ai_category: if request.include_metadata {
+                    Some(row.6)
+                } else {
+                    None
+                },
+                ai_confidence: if request.include_metadata {
+                    Some(row.7)
+                } else {
+                    None
+                },
             });
         }
     }
 
     let exported_count = export_data.len();
-    
+
     match request.format {
         ExportFormat::Json => {
             let json_content = serde_json::to_string_pretty(&export_data)
@@ -292,7 +306,8 @@ pub fn batch_export(
                 .map_err(|e| AppError::validation(format!("文件写入失败: {}", e)))?;
         }
         ExportFormat::Xml => {
-            let mut xml_content = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<records>\n");
+            let mut xml_content =
+                String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<records>\n");
             for record in &export_data {
                 xml_content.push_str(&format!(
                     "  <record>\n    <id>{}</id>\n    <file_path>{}</file_path>\n    <file_name>{}</file_name>\n    <file_size>{}</file_size>\n  </record>\n",
@@ -359,63 +374,104 @@ pub struct StorageStats {
 pub fn get_library_stats(db: State<'_, Database>) -> AppResult<LibraryStats> {
     let conn = db.open_connection()?;
 
-    let total_images: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM images",
-        [],
-        |row| row.get(0)
-    ).unwrap_or(0);
+    let total_images: i64 = conn
+        .query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0))
+        .unwrap_or(0);
 
     let category_distribution: Vec<(String, i64)> = {
         let mut stmt = conn.prepare(
             "SELECT COALESCE(ai_category, 'uncategorized'), COUNT(*) 
-             FROM images GROUP BY ai_category ORDER BY COUNT(*) DESC"
+             FROM images GROUP BY ai_category ORDER BY COUNT(*) DESC",
         )?;
-        let results: Vec<(String, i64)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        let results: Vec<(String, i64)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .filter_map(|r| r.ok())
             .collect();
         results
     };
 
     let ai_progress: AIProgressStats = {
-        let pending: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM images WHERE ai_status = 'pending'", [], |row| row.get(0)
-        ).unwrap_or(0);
-        let processing: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM images WHERE ai_status = 'processing'", [], |row| row.get(0)
-        ).unwrap_or(0);
-        let completed: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM images WHERE ai_status = 'completed'", [], |row| row.get(0)
-        ).unwrap_or(0);
-        let failed: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM images WHERE ai_status = 'failed'", [], |row| row.get(0)
-        ).unwrap_or(0);
-        let verified: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM images WHERE ai_tag_status = 'verified'", [], |row| row.get(0)
-        ).unwrap_or(0);
-        let provisional: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM images WHERE ai_tag_status = 'provisional'", [], |row| row.get(0)
-        ).unwrap_or(0);
-        let rejected: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM images WHERE ai_tag_status = 'rejected'", [], |row| row.get(0)
-        ).unwrap_or(0);
+        let pending: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM images WHERE ai_status = 'pending'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let processing: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM images WHERE ai_status = 'processing'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let completed: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM images WHERE ai_status = 'completed'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let failed: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM images WHERE ai_status = 'failed'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let verified: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM images WHERE ai_tag_status = 'verified'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let provisional: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM images WHERE ai_tag_status = 'provisional'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let rejected: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM images WHERE ai_tag_status = 'rejected'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
         AIProgressStats {
-            pending, processing, completed, failed, verified, provisional, rejected,
+            pending,
+            processing,
+            completed,
+            failed,
+            verified,
+            provisional,
+            rejected,
         }
     };
 
     let storage_usage: StorageStats = {
-        let total_size_bytes: i64 = conn.query_row(
-            "SELECT COALESCE(SUM(file_size), 0) FROM images", [], |row| row.get(0)
-        ).unwrap_or(0);
+        let total_size_bytes: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(file_size), 0) FROM images",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
         let average_image_size = if total_images > 0 {
             total_size_bytes / total_images
         } else {
             0
         };
-        let largest_image_size: i64 = conn.query_row(
-            "SELECT COALESCE(MAX(file_size), 0) FROM images", [], |row| row.get(0)
-        ).unwrap_or(0);
+        let largest_image_size: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(file_size), 0) FROM images",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
         StorageStats {
             total_size_bytes,
@@ -425,10 +481,10 @@ pub fn get_library_stats(db: State<'_, Database>) -> AppResult<LibraryStats> {
     };
 
     let tag_cloud: Vec<(String, i64)> = {
-        let mut stmt = conn.prepare(
-            "SELECT ai_tags FROM images WHERE ai_tags IS NOT NULL AND ai_tags != ''"
-        )?;
-        let tag_rows: Vec<String> = stmt.query_map([], |row| row.get(0))?
+        let mut stmt =
+            conn.prepare("SELECT ai_tags FROM images WHERE ai_tags IS NOT NULL AND ai_tags != ''")?;
+        let tag_rows: Vec<String> = stmt
+            .query_map([], |row| row.get(0))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -488,10 +544,7 @@ pub struct AccuracyTrend {
 }
 
 #[tauri::command]
-pub fn get_accuracy_trend(
-    db: State<'_, Database>,
-    days: Option<i64>,
-) -> AppResult<AccuracyTrend> {
+pub fn get_accuracy_trend(db: State<'_, Database>, days: Option<i64>) -> AppResult<AccuracyTrend> {
     let conn = db.open_connection()?;
     let days = days.unwrap_or(30);
 
@@ -506,25 +559,28 @@ pub fn get_accuracy_trend(
                AND ai_processed_at IS NOT NULL
                AND ai_processed_at >= DATE('now', ?1)
              GROUP BY DATE(ai_processed_at)
-             ORDER BY date ASC"
+             ORDER BY date ASC",
         )?;
-        
-        let results: Vec<AccuracyDataPoint> = stmt.query_map(rusqlite::params![format!("-{} days", days)], |row| {
-            let total: i64 = row.get(1)?;
-            let correct: i64 = row.get(2)?;
-            let accuracy = if total > 0 {
-                correct as f64 / total as f64
-            } else {
-                0.0
-            };
-            
-            Ok(AccuracyDataPoint {
-                date: row.get(0)?,
-                total,
-                correct,
-                accuracy,
-            })
-        })?.filter_map(|r| r.ok()).collect();
+
+        let results: Vec<AccuracyDataPoint> = stmt
+            .query_map(rusqlite::params![format!("-{} days", days)], |row| {
+                let total: i64 = row.get(1)?;
+                let correct: i64 = row.get(2)?;
+                let accuracy = if total > 0 {
+                    correct as f64 / total as f64
+                } else {
+                    0.0
+                };
+
+                Ok(AccuracyDataPoint {
+                    date: row.get(0)?,
+                    total,
+                    correct,
+                    accuracy,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
         results
     };
 
@@ -540,36 +596,43 @@ pub fn get_accuracy_trend(
              FROM images 
              WHERE ai_status = 'completed'
              GROUP BY ai_category
-             ORDER BY total DESC"
+             ORDER BY total DESC",
         )?;
-        
-        let results: Vec<CategoryAccuracy> = stmt.query_map([], |row| {
-            Ok(CategoryAccuracy {
-                category: row.get(0)?,
-                total: row.get(1)?,
-                verified: row.get(2)?,
-                provisional: row.get(3)?,
-                rejected: row.get(4)?,
-                average_confidence: row.get(5)?,
-            })
-        })?.filter_map(|r| r.ok()).collect();
+
+        let results: Vec<CategoryAccuracy> = stmt
+            .query_map([], |row| {
+                Ok(CategoryAccuracy {
+                    category: row.get(0)?,
+                    total: row.get(1)?,
+                    verified: row.get(2)?,
+                    provisional: row.get(3)?,
+                    rejected: row.get(4)?,
+                    average_confidence: row.get(5)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
         results
     };
 
     let calibration_comparison = {
-        let latest_report: Option<(f64, String)> = conn.query_row(
-            "SELECT overall_ece, computed_at FROM calibration_reports 
+        let latest_report: Option<(f64, String)> = conn
+            .query_row(
+                "SELECT overall_ece, computed_at FROM calibration_reports 
              ORDER BY created_at DESC LIMIT 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?))
-        ).ok();
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
 
-        let previous_report: Option<(f64, String)> = conn.query_row(
-            "SELECT overall_ece, computed_at FROM calibration_reports 
+        let previous_report: Option<(f64, String)> = conn
+            .query_row(
+                "SELECT overall_ece, computed_at FROM calibration_reports 
              ORDER BY created_at DESC LIMIT 1 OFFSET 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?))
-        ).ok();
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
 
         match (latest_report, previous_report) {
             (Some((after_ece, _)), Some((before_ece, _))) => {
@@ -773,8 +836,7 @@ pub fn clear_logs() -> AppResult<usize> {
         return Ok(0);
     }
 
-    std::fs::write(path, "")
-        .map_err(|e| AppError::internal(format!("无法清空日志: {}", e)))?;
+    std::fs::write(path, "").map_err(|e| AppError::internal(format!("无法清空日志: {}", e)))?;
 
     Ok(1)
 }
@@ -957,7 +1019,11 @@ mod tests {
 
     #[test]
     fn test_tag_operation_remove_logic() {
-        let mut current = vec!["标签1".to_string(), "标签2".to_string(), "标签3".to_string()];
+        let mut current = vec![
+            "标签1".to_string(),
+            "标签2".to_string(),
+            "标签3".to_string(),
+        ];
         let remove_tags = ["标签2".to_string()];
 
         current.retain(|tag| !remove_tags.contains(tag));
@@ -1028,12 +1094,27 @@ mod tests {
     fn test_accuracy_trend_struct() {
         let trend = AccuracyTrend {
             daily_data: vec![
-                AccuracyDataPoint { date: "2026-04-01".to_string(), total: 10, correct: 8, accuracy: 0.8 },
-                AccuracyDataPoint { date: "2026-04-02".to_string(), total: 15, correct: 13, accuracy: 0.867 },
+                AccuracyDataPoint {
+                    date: "2026-04-01".to_string(),
+                    total: 10,
+                    correct: 8,
+                    accuracy: 0.8,
+                },
+                AccuracyDataPoint {
+                    date: "2026-04-02".to_string(),
+                    total: 15,
+                    correct: 13,
+                    accuracy: 0.867,
+                },
             ],
-            category_accuracy: vec![
-                CategoryAccuracy { category: "风景".to_string(), total: 50, verified: 40, provisional: 8, rejected: 2, average_confidence: 0.82 },
-            ],
+            category_accuracy: vec![CategoryAccuracy {
+                category: "风景".to_string(),
+                total: 50,
+                verified: 40,
+                provisional: 8,
+                rejected: 2,
+                average_confidence: 0.82,
+            }],
             calibration_comparison: Some(CalibrationComparison {
                 before_ece: 0.15,
                 after_ece: 0.05,

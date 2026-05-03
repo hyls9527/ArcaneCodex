@@ -2,8 +2,8 @@
 // Local-first Image Knowledge Base
 
 #![cfg_attr(
-  all(not(debug_assertions), target_os = "windows"),
-  windows_subsystem = "windows"
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
 )]
 
 mod commands;
@@ -11,8 +11,8 @@ mod core;
 mod models;
 mod utils;
 
-use tauri::Manager;
 use std::sync::Arc;
+use tauri::Manager;
 
 fn main() {
     // 初始化日志系统
@@ -78,10 +78,16 @@ fn main() {
         .setup(|app| {
             let app_handle = app.handle();
             let db = core::db::Database::new(app_handle).map_err(|e| {
-                tauri::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                tauri::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
             })?;
             db.run_migrations().map_err(|e| {
-                tauri::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                tauri::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
             })?;
 
             if let Err(e) = commands::seed_data::seed_if_empty(&db) {

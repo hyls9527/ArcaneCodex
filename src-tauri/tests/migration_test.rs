@@ -8,22 +8,28 @@ mod tests {
     // Simulates an empty database (no tables, user_version = 0)
     fn setup_empty_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             PRAGMA journal_mode=WAL;
             PRAGMA foreign_keys=ON;
             PRAGMA user_version = 0;
-        ").unwrap();
+        ",
+        )
+        .unwrap();
         conn
     }
 
     // Simulates a database with user_version = 1 but no tables (edge case)
     fn setup_version1_no_tables() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             PRAGMA journal_mode=WAL;
             PRAGMA foreign_keys=ON;
             PRAGMA user_version = 1;
-        ").unwrap();
+        ",
+        )
+        .unwrap();
         conn
     }
 
@@ -126,66 +132,83 @@ mod tests {
     #[test]
     fn test_migration_from_version_0() {
         let mut conn = setup_empty_db();
-        
+
         // Check initial version
-        let initial_version: i32 = conn.pragma_query_value(None, "user_version", |row| {
-            row.get(0)
-        }).unwrap();
+        let initial_version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
         assert_eq!(initial_version, 0);
-        
+
         // Check no tables exist initially
-        let table_count: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='table'", [], |row| row.get(0)).unwrap();
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(table_count, 0);
-        
+
         // Run migration
         run_v1_migration(&mut conn);
-        
+
         // Verify version updated
-        let new_version: i32 = conn.pragma_query_value(None, "user_version", |row| {
-            row.get(0)
-        }).unwrap();
+        let new_version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
         assert_eq!(new_version, 1);
-        
+
         // Verify tables exist after migration
-        let table_count: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='table'", [], |row| row.get(0)).unwrap();
-        assert!(table_count >= 5, "Should have at least 5 tables after migration");
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            table_count >= 5,
+            "Should have at least 5 tables after migration"
+        );
     }
 
     #[test]
     fn test_no_migration_when_already_version_1() {
         let mut conn = setup_version1_no_tables();
-        
-        let initial_version: i32 = conn.pragma_query_value(None, "user_version", |row| {
-            row.get(0)
-        }).unwrap();
+
+        let initial_version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
         assert_eq!(initial_version, 1);
-        
+
         // Run migration (should be idempotent due to IF NOT EXISTS)
         run_v1_migration(&mut conn);
-        
+
         // Version should remain 1
-        let new_version: i32 = conn.pragma_query_value(None, "user_version", |row| {
-            row.get(0)
-        }).unwrap();
+        let new_version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
         assert_eq!(new_version, 1);
     }
 
     #[test]
     fn test_migration_idempotency() {
         let mut conn = setup_empty_db();
-        
+
         // Run migration twice
         run_v1_migration(&mut conn);
         run_v1_migration(&mut conn);
-        
+
         // Should still have version 1
-        let version: i32 = conn.pragma_query_value(None, "user_version", |row| {
-            row.get(0)
-        }).unwrap();
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
         assert_eq!(version, 1);
-        
+
         // Check that app_config still has correct default values (not duplicated)
-        let mut stmt = conn.prepare("SELECT count(*) FROM app_config WHERE key = 'lm_studio_url'").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT count(*) FROM app_config WHERE key = 'lm_studio_url'")
+            .unwrap();
         let count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
         assert_eq!(count, 1, "INSERT OR IGNORE should prevent duplicates");
     }
@@ -194,15 +217,30 @@ mod tests {
     fn test_migration_creates_all_tables() {
         let mut conn = setup_empty_db();
         run_v1_migration(&mut conn);
-        
-        let expected_tables = vec!["images", "tags", "image_tags", "search_index", "task_queue", "app_config"];
-        
+
+        let expected_tables = vec![
+            "images",
+            "tags",
+            "image_tags",
+            "search_index",
+            "task_queue",
+            "app_config",
+        ];
+
         for table_name in expected_tables {
-            let mut stmt = conn.prepare("
+            let mut stmt = conn
+                .prepare(
+                    "
                 SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?
-            ").unwrap();
+            ",
+                )
+                .unwrap();
             let exists: i64 = stmt.query_row([table_name], |row| row.get(0)).unwrap();
-            assert_eq!(exists, 1, "Table '{}' should exist after migration", table_name);
+            assert_eq!(
+                exists, 1,
+                "Table '{}' should exist after migration",
+                table_name
+            );
         }
     }
 
@@ -210,7 +248,7 @@ mod tests {
     fn test_migration_creates_all_indexes() {
         let mut conn = setup_empty_db();
         run_v1_migration(&mut conn);
-        
+
         let expected_indexes = vec![
             "idx_images_ai_status",
             "idx_images_created_at",
@@ -220,43 +258,51 @@ mod tests {
             "idx_task_queue_status",
             "idx_task_queue_priority",
         ];
-        
+
         for index_name in expected_indexes {
-            let mut stmt = conn.prepare("
+            let mut stmt = conn
+                .prepare(
+                    "
                 SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?
-            ").unwrap();
+            ",
+                )
+                .unwrap();
             let exists: i64 = stmt.query_row([index_name], |row| row.get(0)).unwrap();
-            assert_eq!(exists, 1, "Index '{}' should exist after migration", index_name);
+            assert_eq!(
+                exists, 1,
+                "Index '{}' should exist after migration",
+                index_name
+            );
         }
     }
 
     #[test]
     fn test_wal_mode_persists_after_migration() {
         let mut conn = setup_empty_db();
-        
+
         // Enable WAL mode
-        let mode: String = conn.pragma_query_value(None, "journal_mode", |row| {
-            row.get(0)
-        }).unwrap();
-        
+        let mode: String = conn
+            .pragma_query_value(None, "journal_mode", |row| row.get(0))
+            .unwrap();
+
         // Note: In-memory databases use "memory" journal mode and cannot use WAL
         // This test verifies that WAL mode is set in the migration SQL
         // For in-memory DB, we verify the migration includes PRAGMA journal_mode=WAL
         if mode == "memory" {
             // In-memory DB can't use WAL, so we just verify the migration runs successfully
             run_v1_migration(&mut conn);
-            let post_mode: String = conn.pragma_query_value(None, "journal_mode", |row| {
-                row.get(0)
-            }).unwrap();
+            let post_mode: String = conn
+                .pragma_query_value(None, "journal_mode", |row| row.get(0))
+                .unwrap();
             assert_eq!(post_mode, "memory");
         } else {
             // Run migration
             run_v1_migration(&mut conn);
-            
+
             // Verify WAL mode is still active
-            let journal_mode: String = conn.pragma_query_value(None, "journal_mode", |row| {
-                row.get(0)
-            }).unwrap();
+            let journal_mode: String = conn
+                .pragma_query_value(None, "journal_mode", |row| row.get(0))
+                .unwrap();
             assert_eq!(journal_mode, "wal");
         }
     }
@@ -264,13 +310,13 @@ mod tests {
     #[test]
     fn test_foreign_keys_persist_after_migration() {
         let mut conn = setup_empty_db();
-        
+
         conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
         run_v1_migration(&mut conn);
-        
-        let fk_enabled: i32 = conn.pragma_query_value(None, "foreign_keys", |row| {
-            row.get(0)
-        }).unwrap();
+
+        let fk_enabled: i32 = conn
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .unwrap();
         assert_eq!(fk_enabled, 1);
     }
 }

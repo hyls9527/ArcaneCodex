@@ -1,5 +1,5 @@
 use crate::core::db::Database;
-use crate::utils::error::{AppResult, AppError};
+use crate::utils::error::{AppError, AppResult};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -26,7 +26,9 @@ pub fn record_tag_correction(
     request: RecordTagCorrectionRequest,
 ) -> AppResult<i64> {
     if request.old_tags.is_empty() && request.new_tags.is_empty() {
-        return Err(AppError::validation("old_tags 和 new_tags 不能同时为空".to_string()));
+        return Err(AppError::validation(
+            "old_tags 和 new_tags 不能同时为空".to_string(),
+        ));
     }
 
     let conn = db.open_connection()?;
@@ -52,9 +54,11 @@ pub fn record_tag_correction(
     )?;
 
     let pattern_name = format!("tag_correction_{}", request.image_id);
-    let pattern_desc = format!("用户修正了 image_id={} 的标签，从 {:?} 改为 {:?}",
-        request.image_id, request.old_tags, request.new_tags);
-    
+    let pattern_desc = format!(
+        "用户修正了 image_id={} 的标签，从 {:?} 改为 {:?}",
+        request.image_id, request.old_tags, request.new_tags
+    );
+
     let _ = stmt.execute(params![pattern_name, pattern_desc]);
 
     Ok(row_id as i64)
@@ -71,7 +75,7 @@ pub fn get_tag_correction_history(
         "SELECT id, image_id, old_tags, new_tags, corrected_at 
          FROM tag_corrections 
          WHERE image_id = ?1 
-         ORDER BY corrected_at DESC"
+         ORDER BY corrected_at DESC",
     )?;
 
     let records = stmt
@@ -79,10 +83,8 @@ pub fn get_tag_correction_history(
             let old_tags_json: String = row.get(2)?;
             let new_tags_json: String = row.get(3)?;
 
-            let old_tags: Vec<String> = serde_json::from_str(&old_tags_json)
-                .unwrap_or_default();
-            let new_tags: Vec<String> = serde_json::from_str(&new_tags_json)
-                .unwrap_or_default();
+            let old_tags: Vec<String> = serde_json::from_str(&old_tags_json).unwrap_or_default();
+            let new_tags: Vec<String> = serde_json::from_str(&new_tags_json).unwrap_or_default();
 
             Ok(TagCorrectionRecord {
                 id: row.get(0)?,
@@ -112,7 +114,7 @@ pub fn get_all_tag_corrections(
         "SELECT id, image_id, old_tags, new_tags, corrected_at 
          FROM tag_corrections 
          ORDER BY corrected_at DESC 
-         LIMIT ?1 OFFSET ?2"
+         LIMIT ?1 OFFSET ?2",
     )?;
 
     let records = stmt
@@ -120,10 +122,8 @@ pub fn get_all_tag_corrections(
             let old_tags_json: String = row.get(2)?;
             let new_tags_json: String = row.get(3)?;
 
-            let old_tags: Vec<String> = serde_json::from_str(&old_tags_json)
-                .unwrap_or_default();
-            let new_tags: Vec<String> = serde_json::from_str(&new_tags_json)
-                .unwrap_or_default();
+            let old_tags: Vec<String> = serde_json::from_str(&old_tags_json).unwrap_or_default();
+            let new_tags: Vec<String> = serde_json::from_str(&new_tags_json).unwrap_or_default();
 
             Ok(TagCorrectionRecord {
                 id: row.get(0)?,
@@ -156,7 +156,8 @@ mod tests {
             "INSERT OR IGNORE INTO images (id, file_path, file_name, file_size, ai_status) 
              VALUES (1, '/test/image.jpg', 'image.jpg', 12345, 'completed')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         (db, temp_dir)
     }
@@ -211,7 +212,7 @@ mod tests {
     #[ignore = "v1.1: 需要积累 100+ 修正记录后实现 prompt 微调"]
     fn test_prompt_fine_tuning_with_corrections() {
         // v1.1 路线图: 定期用修正样本微调 prompt
-        // 
+        //
         // 功能需求:
         // 1. 定期分析 tag_corrections 表中的修正记录
         // 2. 识别常见的标签修正模式

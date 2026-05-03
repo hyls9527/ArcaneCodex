@@ -1,11 +1,11 @@
-use serde::{Deserialize, Serialize};
-use tauri::State;
-use tracing::info;
-use std::sync::Arc;
 use crate::core::ai_queue::AITaskQueue;
 use crate::core::db::Database;
 use crate::utils::error::AppResult;
 use rusqlite::params;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tauri::State;
+use tracing::info;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AIStatus {
@@ -30,9 +30,7 @@ pub struct AIResult {
 }
 
 #[tauri::command]
-pub async fn start_ai_processing(
-    queue: State<'_, Arc<AITaskQueue>>,
-) -> AppResult<AIStatus> {
+pub async fn start_ai_processing(queue: State<'_, Arc<AITaskQueue>>) -> AppResult<AIStatus> {
     info!("启动 AI 处理队列");
 
     queue.start();
@@ -52,27 +50,21 @@ pub async fn start_ai_processing(
 }
 
 #[tauri::command]
-pub async fn pause_ai_processing(
-    queue: State<'_, AITaskQueue>,
-) -> AppResult<()> {
+pub async fn pause_ai_processing(queue: State<'_, AITaskQueue>) -> AppResult<()> {
     info!("暂停 AI 处理队列");
     queue.pause();
     Ok(())
 }
 
 #[tauri::command]
-pub async fn resume_ai_processing(
-    queue: State<'_, AITaskQueue>,
-) -> AppResult<()> {
+pub async fn resume_ai_processing(queue: State<'_, AITaskQueue>) -> AppResult<()> {
     info!("恢复 AI 处理队列");
     queue.resume();
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_ai_status(
-    queue: State<'_, AITaskQueue>,
-) -> AppResult<AIStatus> {
+pub async fn get_ai_status(queue: State<'_, AITaskQueue>) -> AppResult<AIStatus> {
     let status = queue.get_status();
 
     let status_str = if !status.is_running {
@@ -116,7 +108,7 @@ pub async fn get_recent_ai_results(
     limit: Option<i64>,
 ) -> AppResult<Vec<AIResult>> {
     let limit = limit.unwrap_or(50);
-    
+
     let conn = db.open_connection()?;
     let mut stmt = conn.prepare(
         "SELECT id, file_name, ai_status, ai_tags, ai_description, ai_category, 
@@ -125,9 +117,9 @@ pub async fn get_recent_ai_results(
          WHERE ai_status IN ('completed', 'failed') 
          AND ai_processed_at IS NOT NULL
          ORDER BY ai_processed_at DESC 
-         LIMIT ?"
+         LIMIT ?",
     )?;
-    
+
     let rows = stmt.query_map(params![limit], |row| {
         Ok(AIResult {
             id: row.get(0)?,
@@ -140,12 +132,12 @@ pub async fn get_recent_ai_results(
             ai_processed_at: row.get(7).ok(),
         })
     })?;
-    
+
     let mut results = Vec::new();
     for row in rows {
         results.push(row?);
     }
-    
+
     Ok(results)
 }
 
@@ -209,9 +201,7 @@ mod tests {
             eta_seconds: Some(0),
         };
 
-        let deserialized: AIStatus = serde_json::from_str(
-            &serde_json::to_string(&status)?
-        )?;
+        let deserialized: AIStatus = serde_json::from_str(&serde_json::to_string(&status)?)?;
 
         assert_eq!(deserialized.status, "completed");
         assert_eq!(deserialized.completed, deserialized.total);

@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
-use tauri::State;
 use crate::core::db::Database;
 use crate::core::inference::InferenceProviderType;
-use crate::utils::error::{AppError, AppResult};
 use crate::utils::crypto;
+use crate::utils::error::{AppError, AppResult};
+use serde::{Deserialize, Serialize};
+use tauri::State;
 use tracing::info;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,34 +15,44 @@ pub struct InferenceProviderConfig {
 }
 
 #[tauri::command]
-pub async fn get_inference_config(
-    db: State<'_, Database>,
-) -> AppResult<InferenceProviderConfig> {
+pub async fn get_inference_config(db: State<'_, Database>) -> AppResult<InferenceProviderConfig> {
     let conn = db.open_connection().map_err(AppError::database)?;
 
-    let provider = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'inference_provider'",
-        [],
-        |row| row.get::<_, String>(0)
-    ).unwrap_or_else(|_| "lm_studio".to_string());
+    let provider = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'inference_provider'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "lm_studio".to_string());
 
-    let model = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'inference_model'",
-        [],
-        |row| row.get::<_, String>(0)
-    ).unwrap_or_else(|_| "Qwen2.5-VL-7B-Instruct".to_string());
+    let model = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'inference_model'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "Qwen2.5-VL-7B-Instruct".to_string());
 
-    let api_key = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'inference_api_key'",
-        [],
-        |row| row.get::<_, String>(0)
-    ).ok().filter(|k| !k.is_empty()).map(|k| crypto::decrypt_api_key(&k));
+    let api_key = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'inference_api_key'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .filter(|k| !k.is_empty())
+        .map(|k| crypto::decrypt_api_key(&k));
 
-    let timeout_secs = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'inference_timeout'",
-        [],
-        |row| row.get::<_, String>(0)
-    ).ok().and_then(|v| v.parse().ok()).unwrap_or(60);
+    let timeout_secs = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'inference_timeout'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(60);
 
     Ok(InferenceProviderConfig {
         provider,
@@ -68,55 +78,69 @@ pub async fn set_inference_provider(
         "zhipu" => InferenceProviderType::Zhipu,
         "openai" => InferenceProviderType::OpenAI,
         "openrouter" => InferenceProviderType::OpenRouter,
-        _ => return Err(AppError::validation(format!("不支持的推理提供者: {}", provider))),
+        _ => {
+            return Err(AppError::validation(format!(
+                "不支持的推理提供者: {}",
+                provider
+            )))
+        }
     };
 
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('inference_provider', ?1)",
-        rusqlite::params![format!("{:?}", ptype).to_lowercase()]
-    ).map_err(AppError::database)?;
+        rusqlite::params![format!("{:?}", ptype).to_lowercase()],
+    )
+    .map_err(AppError::database)?;
 
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('inference_model', ?1)",
-        rusqlite::params![model]
-    ).map_err(AppError::database)?;
+        rusqlite::params![model],
+    )
+    .map_err(AppError::database)?;
 
     let key_value = api_key.unwrap_or_default();
     let encrypted_key = crypto::encrypt_api_key(&key_value);
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('inference_api_key', ?1)",
-        rusqlite::params![encrypted_key]
-    ).map_err(AppError::database)?;
+        rusqlite::params![encrypted_key],
+    )
+    .map_err(AppError::database)?;
 
     info!("推理提供者已切换: {}", provider);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn test_inference_connection(
-    db: State<'_, Database>,
-) -> AppResult<String> {
+pub async fn test_inference_connection(db: State<'_, Database>) -> AppResult<String> {
     use crate::core::inference::{ProviderConfig, ProviderFactory};
 
     let conn = db.open_connection().map_err(AppError::database)?;
 
-    let provider_type = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'inference_provider'",
-        [],
-        |row| row.get::<_, String>(0)
-    ).unwrap_or_else(|_| "lm_studio".to_string());
+    let provider_type = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'inference_provider'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "lm_studio".to_string());
 
-    let model = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'inference_model'",
-        [],
-        |row| row.get::<_, String>(0)
-    ).unwrap_or_else(|_| "Qwen2.5-VL-7B-Instruct".to_string());
+    let model = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'inference_model'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "Qwen2.5-VL-7B-Instruct".to_string());
 
-    let api_key = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'inference_api_key'",
-        [],
-        |row| row.get::<_, String>(0)
-    ).ok().map(|k| crypto::decrypt_api_key(&k)).filter(|k| !k.is_empty());
+    let api_key = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'inference_api_key'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .map(|k| crypto::decrypt_api_key(&k))
+        .filter(|k| !k.is_empty());
 
     let ptype = match provider_type.as_str() {
         "zhipu" => InferenceProviderType::Zhipu,
@@ -139,7 +163,8 @@ pub async fn test_inference_connection(
 }
 
 #[tauri::command]
-pub async fn discover_available_models() -> AppResult<Vec<crate::core::inference::DiscoveredModel>> {
+pub async fn discover_available_models() -> AppResult<Vec<crate::core::inference::DiscoveredModel>>
+{
     let models = crate::core::inference::ModelDiscoveryService::scan_all().await;
     Ok(models)
 }
@@ -167,7 +192,7 @@ mod tests {
         let result = conn.query_row(
             "SELECT value FROM settings WHERE key = 'inference_provider'",
             [],
-            |row| row.get::<_, String>(0)
+            |row| row.get::<_, String>(0),
         );
 
         assert_eq!(result.unwrap(), "lm_studio");

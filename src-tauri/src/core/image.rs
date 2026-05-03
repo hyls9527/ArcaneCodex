@@ -17,25 +17,24 @@ impl ImageProcessor {
 
         if !img_path.exists() {
             return Err(AppError::validation(format!(
-                "源图片不存在: {}", image_path
+                "源图片不存在: {}",
+                image_path
             )));
         }
 
-        let img = image::open(img_path).map_err(|e| {
-            AppError::validation(format!("无法打开图片 {}: {}", image_path, e))
-        })?;
+        let img = image::open(img_path)
+            .map_err(|e| AppError::validation(format!("无法打开图片 {}: {}", image_path, e)))?;
 
         let thumbnail = img.thumbnail(MAX_THUMBNAIL_WIDTH, MAX_THUMBNAIL_HEIGHT);
 
         if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                AppError::io(std::io::Error::new(std::io::ErrorKind::Other, e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| AppError::io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         }
 
-        thumbnail.save_with_format(out_path, image::ImageFormat::WebP).map_err(|e| {
-            AppError::validation(format!("保存缩略图失败 {}: {}", output_path, e))
-        })?;
+        thumbnail
+            .save_with_format(out_path, image::ImageFormat::WebP)
+            .map_err(|e| AppError::validation(format!("保存缩略图失败 {}: {}", output_path, e)))?;
 
         info!("缩略图生成成功: {} -> {}", image_path, output_path);
 
@@ -47,22 +46,18 @@ impl ImageProcessor {
 
         if !img_path.exists() {
             return Err(AppError::validation(format!(
-                "源图片不存在: {}", image_path
+                "源图片不存在: {}",
+                image_path
             )));
         }
 
-        let img = image::open(img_path).map_err(|e| {
-            AppError::validation(format!("无法打开图片 {}: {}", image_path, e))
-        })?;
+        let img = image::open(img_path)
+            .map_err(|e| AppError::validation(format!("无法打开图片 {}: {}", image_path, e)))?;
 
         let rgba = img.to_rgba8();
 
-        let img_resized = image::imageops::resize(
-            &rgba,
-            32,
-            32,
-            image::imageops::FilterType::Lanczos3,
-        );
+        let img_resized =
+            image::imageops::resize(&rgba, 32, 32, image::imageops::FilterType::Lanczos3);
 
         let gray: image::GrayImage = image::imageops::colorops::grayscale(&img_resized);
 
@@ -73,17 +68,17 @@ impl ImageProcessor {
 
     #[allow(dead_code)]
     pub fn hamming_distance(hash1: &str, hash2: &str) -> AppResult<u32> {
-        let bytes1 = hex::decode(hash1).map_err(|e| {
-            AppError::validation(format!("解析 hash1 失败: {:?}", e))
-        })?;
+        let bytes1 = hex::decode(hash1)
+            .map_err(|e| AppError::validation(format!("解析 hash1 失败: {:?}", e)))?;
 
-        let bytes2 = hex::decode(hash2).map_err(|e| {
-            AppError::validation(format!("解析 hash2 失败: {:?}", e))
-        })?;
+        let bytes2 = hex::decode(hash2)
+            .map_err(|e| AppError::validation(format!("解析 hash2 失败: {:?}", e)))?;
 
         if bytes1.len() != bytes2.len() {
             return Err(AppError::validation(format!(
-                "哈希长度不匹配: {} vs {}", bytes1.len(), bytes2.len()
+                "哈希长度不匹配: {} vs {}",
+                bytes1.len(),
+                bytes2.len()
             )));
         }
 
@@ -100,13 +95,13 @@ impl ImageProcessor {
 
         if !img_path.exists() {
             return Err(AppError::validation(format!(
-                "源图片不存在: {}", image_path
+                "源图片不存在: {}",
+                image_path
             )));
         }
 
-        let img = image::open(img_path).map_err(|e| {
-            AppError::validation(format!("无法打开图片 {}: {}", image_path, e))
-        })?;
+        let img = image::open(img_path)
+            .map_err(|e| AppError::validation(format!("无法打开图片 {}: {}", image_path, e)))?;
 
         let dimensions = img.dimensions();
 
@@ -116,24 +111,27 @@ impl ImageProcessor {
             "has_exif": false
         });
 
-        let file = File::open(img_path).map_err(|e| {
-            AppError::validation(format!("无法打开文件: {}", e))
-        })?;
+        let file = File::open(img_path)
+            .map_err(|e| AppError::validation(format!("无法打开文件: {}", e)))?;
 
         let mut bufreader = BufReader::new(&file);
         let exifreader = exif::Reader::new();
-        
+
         match exifreader.read_from_container(&mut bufreader) {
             Ok(exif) => {
                 let mut exif_json = serde_json::Map::new();
-                
+
                 exif_json.insert("has_exif".to_string(), serde_json::json!(true));
                 exif_json.insert("width".to_string(), serde_json::json!(dimensions.0));
                 exif_json.insert("height".to_string(), serde_json::json!(dimensions.1));
 
-                if let Some(field) = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
+                if let Some(field) = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)
+                {
                     let datetime_str = field.display_value().to_string();
-                    exif_json.insert("datetime_original".to_string(), serde_json::json!(datetime_str));
+                    exif_json.insert(
+                        "datetime_original".to_string(),
+                        serde_json::json!(datetime_str),
+                    );
                 }
 
                 if let Some(field) = exif.get_field(exif::Tag::DateTime, exif::In::PRIMARY) {
@@ -187,7 +185,7 @@ impl ImageProcessor {
                 }
 
                 exif_data = serde_json::Value::Object(exif_json);
-                
+
                 info!("EXIF 提取成功: {}", image_path);
             }
             Err(_) => {
@@ -240,8 +238,12 @@ mod tests {
     use std::fs;
 
     fn create_test_image(path: &Path, width: u32, height: u32) {
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-        
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
         if ext == "jpg" || ext == "jpeg" {
             let img = image::RgbImage::from_pixel(width, height, image::Rgb([255, 0, 0]));
             img.save(path).unwrap();
@@ -274,8 +276,16 @@ mod tests {
 
         let thumb = image::open(&out_path).unwrap();
         let (w, h) = thumb.dimensions();
-        assert!(w <= MAX_THUMBNAIL_WIDTH, "宽度不应超过 {}", MAX_THUMBNAIL_WIDTH);
-        assert!(h <= MAX_THUMBNAIL_HEIGHT, "高度不应超过 {}", MAX_THUMBNAIL_HEIGHT);
+        assert!(
+            w <= MAX_THUMBNAIL_WIDTH,
+            "宽度不应超过 {}",
+            MAX_THUMBNAIL_WIDTH
+        );
+        assert!(
+            h <= MAX_THUMBNAIL_HEIGHT,
+            "高度不应超过 {}",
+            MAX_THUMBNAIL_HEIGHT
+        );
 
         fs::remove_file(&src_path).ok();
         fs::remove_file(&out_path).ok();
@@ -324,8 +334,16 @@ mod tests {
         let thumb = image::open(&out_path).unwrap();
         let (w, h) = thumb.dimensions();
         // 缩略图不应超过最大尺寸
-        assert!(w <= MAX_THUMBNAIL_WIDTH, "宽度不应超过 {}", MAX_THUMBNAIL_WIDTH);
-        assert!(h <= MAX_THUMBNAIL_HEIGHT, "高度不应超过 {}", MAX_THUMBNAIL_HEIGHT);
+        assert!(
+            w <= MAX_THUMBNAIL_WIDTH,
+            "宽度不应超过 {}",
+            MAX_THUMBNAIL_WIDTH
+        );
+        assert!(
+            h <= MAX_THUMBNAIL_HEIGHT,
+            "高度不应超过 {}",
+            MAX_THUMBNAIL_HEIGHT
+        );
         // 保持宽高比
         assert_eq!((w as f32 / h as f32 * 100.0) as u32, 125, "应保持宽高比");
 
@@ -334,10 +352,8 @@ mod tests {
 
     #[test]
     fn test_generate_thumbnail_nonexistent_file() {
-        let result = ImageProcessor::generate_thumbnail(
-            "/nonexistent/path/image.jpg",
-            "/tmp/thumb.webp",
-        );
+        let result =
+            ImageProcessor::generate_thumbnail("/nonexistent/path/image.jpg", "/tmp/thumb.webp");
         assert!(result.is_err(), "不存在的文件应返回错误");
     }
 

@@ -1,10 +1,12 @@
-use thiserror::Error;
-use serde::Serialize;
 use regex::Regex;
+use serde::Serialize;
+use thiserror::Error;
 
 pub fn sanitize_error(msg: &str) -> String {
     let path_re = Regex::new(r"(?i)(?:[A-Za-z]:\\|/)(?:[^\s:\\/]+[\\/])+[^\s:\\/]*").unwrap();
-    let sql_re = Regex::new(r"(?i)\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA)\b.+?(?:;|$)").unwrap();
+    let sql_re =
+        Regex::new(r"(?i)\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA)\b.+?(?:;|$)")
+            .unwrap();
     let result = path_re.replace_all(msg, "[PATH]");
     sql_re.replace_all(&result, "[QUERY]").to_string()
 }
@@ -28,16 +30,10 @@ pub enum AppError {
     },
 
     #[error("[{code}] Validation error: {message}")]
-    ValidationError {
-        code: String,
-        message: String,
-    },
+    ValidationError { code: String, message: String },
 
     #[error("[{code}] AI error: {message}")]
-    AI {
-        code: String,
-        message: String,
-    },
+    AI { code: String, message: String },
 
     #[error("[{code}] HTTP error: {message}")]
     Http {
@@ -48,10 +44,7 @@ pub enum AppError {
     },
 
     #[error("[{code}] Config error: {message}")]
-    Config {
-        code: String,
-        message: String,
-    },
+    Config { code: String, message: String },
 }
 
 impl AppError {
@@ -175,7 +168,7 @@ impl Serialize for AppError {
 }
 
 pub fn init_logging() {
-    use tracing_subscriber::{EnvFilter, fmt};
+    use tracing_subscriber::{fmt, EnvFilter};
 
     let log_dir = std::env::var("APPDATA")
         .map(|appdata| format!("{}\\ArcaneCodex\\logs", appdata))
@@ -192,13 +185,17 @@ pub fn init_logging() {
 
     if let Some(writer) = file_writer {
         fmt()
-            .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+            .with_env_filter(
+                EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()),
+            )
             .with_writer(writer)
             .with_ansi(false)
             .init();
     } else {
         fmt()
-            .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+            .with_env_filter(
+                EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()),
+            )
             .init();
     }
 }
@@ -295,7 +292,7 @@ mod tests {
         let result: Result<(), AppError> = trigger_db_error().map_err(AppError::from);
         assert!(result.is_err());
         match result.unwrap_err() {
-            AppError::Database { .. } => {},
+            AppError::Database { .. } => {}
             _ => panic!("Expected Database error"),
         }
     }
@@ -323,24 +320,42 @@ mod tests {
     fn test_sanitize_error_replaces_windows_path() {
         let msg = "File not found: C:\\Users\\test\\data\\image.jpg";
         let sanitized = sanitize_error(msg);
-        assert!(!sanitized.contains("C:\\Users"), "Windows path should be replaced");
-        assert!(sanitized.contains("[PATH]"), "Should contain [PATH] placeholder");
+        assert!(
+            !sanitized.contains("C:\\Users"),
+            "Windows path should be replaced"
+        );
+        assert!(
+            sanitized.contains("[PATH]"),
+            "Should contain [PATH] placeholder"
+        );
     }
 
     #[test]
     fn test_sanitize_error_replaces_unix_path() {
         let msg = "Failed to read /home/user/secret/data.db";
         let sanitized = sanitize_error(msg);
-        assert!(!sanitized.contains("/home/user"), "Unix path should be replaced");
-        assert!(sanitized.contains("[PATH]"), "Should contain [PATH] placeholder");
+        assert!(
+            !sanitized.contains("/home/user"),
+            "Unix path should be replaced"
+        );
+        assert!(
+            sanitized.contains("[PATH]"),
+            "Should contain [PATH] placeholder"
+        );
     }
 
     #[test]
     fn test_sanitize_error_replaces_sql_query() {
         let msg = "Database error: SELECT * FROM users WHERE id = 1;";
         let sanitized = sanitize_error(msg);
-        assert!(!sanitized.contains("SELECT"), "SQL keyword should be replaced");
-        assert!(sanitized.contains("[QUERY]"), "Should contain [QUERY] placeholder");
+        assert!(
+            !sanitized.contains("SELECT"),
+            "SQL keyword should be replaced"
+        );
+        assert!(
+            sanitized.contains("[QUERY]"),
+            "Should contain [QUERY] placeholder"
+        );
     }
 
     #[test]
@@ -348,7 +363,10 @@ mod tests {
         let msg = "Error executing: INSERT INTO images (file_path) VALUES ('test');";
         let sanitized = sanitize_error(msg);
         assert!(!sanitized.contains("INSERT"), "INSERT should be replaced");
-        assert!(sanitized.contains("[QUERY]"), "Should contain [QUERY] placeholder");
+        assert!(
+            sanitized.contains("[QUERY]"),
+            "Should contain [QUERY] placeholder"
+        );
     }
 
     #[test]
@@ -372,8 +390,14 @@ mod tests {
     fn test_sanitize_error_serialization_integration() {
         let err = AppError::validation("文件不存在: C:\\Users\\test\\image.jpg");
         let serialized = serde_json::to_string(&err).unwrap();
-        assert!(!serialized.contains("C:\\\\Users"), "Serialized error should not contain path");
-        assert!(serialized.contains("[PATH]"), "Serialized error should contain [PATH]");
+        assert!(
+            !serialized.contains("C:\\\\Users"),
+            "Serialized error should not contain path"
+        );
+        assert!(
+            serialized.contains("[PATH]"),
+            "Serialized error should contain [PATH]"
+        );
     }
 
     #[test]
@@ -381,6 +405,9 @@ mod tests {
         let err = AppError::not_found("resource missing");
         let json = serde_json::to_value(&err).unwrap();
         assert_eq!(json["code"], "NF_001");
-        assert!(json["message"].as_str().unwrap().contains("resource missing"));
+        assert!(json["message"]
+            .as_str()
+            .unwrap()
+            .contains("resource missing"));
     }
 }

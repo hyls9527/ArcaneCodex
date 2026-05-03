@@ -59,7 +59,9 @@ pub struct ProviderFactory;
 impl ProviderFactory {
     pub fn create(config: ProviderConfig) -> AppResult<Box<dyn InferenceProvider>> {
         match config.provider_type {
-            InferenceProviderType::LMStudio | InferenceProviderType::Ollama | InferenceProviderType::Hermes => {
+            InferenceProviderType::LMStudio
+            | InferenceProviderType::Ollama
+            | InferenceProviderType::Hermes => {
                 let lm_config = crate::core::lm_studio::LMStudioConfig {
                     base_url: config.base_url,
                     model: config.model,
@@ -87,9 +89,9 @@ impl ProviderFactory {
                 )?))
             }
             InferenceProviderType::Zhipu => {
-                let api_key = config.api_key.ok_or_else(|| {
-                    AppError::validation("智谱 API 需要提供 API Key".to_string())
-                })?;
+                let api_key = config
+                    .api_key
+                    .ok_or_else(|| AppError::validation("智谱 API 需要提供 API Key".to_string()))?;
                 Ok(Box::new(ZhipuProvider::new(
                     config.model,
                     api_key,
@@ -135,15 +137,18 @@ impl InferenceProvider for OpenAICompatibleAdapter {
 }
 
 fn encode_image_to_base64(image_path: &str) -> AppResult<String> {
-    let bytes = std::fs::read(image_path).map_err(|e| {
-        AppError::validation(format!("读取图片文件失败: {}", e))
-    })?;
+    let bytes = std::fs::read(image_path)
+        .map_err(|e| AppError::validation(format!("读取图片文件失败: {}", e)))?;
     Ok(data_encoding::BASE64.encode(&bytes))
 }
 
 fn detect_mime_type(image_path: &str) -> AppResult<String> {
     let path = std::path::Path::new(image_path);
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     Ok(match ext.as_str() {
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
@@ -151,7 +156,8 @@ fn detect_mime_type(image_path: &str) -> AppResult<String> {
         "webp" => "image/webp",
         "bmp" => "image/bmp",
         _ => "image/jpeg",
-    }.to_string())
+    }
+    .to_string())
 }
 
 fn build_prompt() -> String {
@@ -168,7 +174,8 @@ fn build_prompt() -> String {
 - category: 从上述分类中选择一个
 - confidence: 0.0-1.0之间的数字,表示你的置信度
 
-仅返回合法 JSON,不要包含 Markdown 代码块标记或其他解释。"#.to_string()
+仅返回合法 JSON,不要包含 Markdown 代码块标记或其他解释。"#
+        .to_string()
 }
 
 fn parse_ai_response(content: &str, provider: &str, model: &str) -> AppResult<AIResult> {
@@ -178,26 +185,52 @@ fn parse_ai_response(content: &str, provider: &str, model: &str) -> AppResult<AI
         if lines.len() >= 2 {
             lines[1..lines.len() - 1].join("\n")
         } else {
-            content.trim_start_matches("```json").trim_end_matches("```").to_string()
+            content
+                .trim_start_matches("```json")
+                .trim_end_matches("```")
+                .to_string()
         }
     } else {
         content.to_string()
     };
 
     let parsed: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-        AppError::validation(format!("解析 AI JSON 响应失败: {} - 原始内容: {}", e, content))
+        AppError::validation(format!(
+            "解析 AI JSON 响应失败: {} - 原始内容: {}",
+            e, content
+        ))
     })?;
 
-    let tags = parsed.get("tags").and_then(|t| t.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+    let tags = parsed
+        .get("tags")
+        .and_then(|t| t.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
-    let description = parsed.get("description").and_then(|d| d.as_str()).unwrap_or("No description").to_string();
-    let category = parsed.get("category").and_then(|c| c.as_str()).unwrap_or("other").to_string();
-    let confidence = parsed.get("confidence").and_then(|c| c.as_f64()).unwrap_or(0.5);
+    let description = parsed
+        .get("description")
+        .and_then(|d| d.as_str())
+        .unwrap_or("No description")
+        .to_string();
+    let category = parsed
+        .get("category")
+        .and_then(|c| c.as_str())
+        .unwrap_or("other")
+        .to_string();
+    let confidence = parsed
+        .get("confidence")
+        .and_then(|c| c.as_f64())
+        .unwrap_or(0.5);
 
     Ok(AIResult {
-        tags, description, category, confidence,
+        tags,
+        description,
+        category,
+        confidence,
         raw_response: content,
         provider: provider.to_string(),
         model: model.to_string(),
@@ -247,8 +280,12 @@ impl ZhipuProvider {
 
 #[async_trait]
 impl InferenceProvider for ZhipuProvider {
-    fn name(&self) -> &str { "zhipu" }
-    fn model(&self) -> &str { &self.model }
+    fn name(&self) -> &str {
+        "zhipu"
+    }
+    fn model(&self) -> &str {
+        &self.model
+    }
 
     async fn analyze_image(&self, image_path: &str) -> AppResult<AIResult> {
         let image_base64 = encode_image_to_base64(image_path)?;
@@ -268,7 +305,8 @@ impl InferenceProvider for ZhipuProvider {
             "temperature": 0.1
         });
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(format!("{}/api/paas/v4/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request_body)
@@ -279,15 +317,23 @@ impl InferenceProvider for ZhipuProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::validation(format!("智谱 AI 推理失败: HTTP {} - {}", status, body)));
+            return Err(AppError::validation(format!(
+                "智谱 AI 推理失败: HTTP {} - {}",
+                status, body
+            )));
         }
 
-        let body: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::validation(format!("解析智谱 AI 响应失败: {}", e))
-        })?;
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::validation(format!("解析智谱 AI 响应失败: {}", e)))?;
 
-        let content = body.get("choices").and_then(|c| c.as_array()).and_then(|arr| arr.first())
-            .and_then(|choice| choice.get("message")).and_then(|msg| msg.get("content"))
+        let content = body
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|choice| choice.get("message"))
+            .and_then(|msg| msg.get("content"))
             .and_then(|c| c.as_str())
             .ok_or_else(|| AppError::validation("智谱 AI 响应格式不正确".to_string()))?;
 
@@ -319,7 +365,13 @@ impl OpenAIClient {
             .timeout(Duration::from_secs(timeout_secs))
             .build()
             .map_err(|e| AppError::validation(format!("创建 HTTP 客户端失败: {}", e)))?;
-        Ok(Self { client, provider_type, base_url, model, api_key })
+        Ok(Self {
+            client,
+            provider_type,
+            base_url,
+            model,
+            api_key,
+        })
     }
 }
 
@@ -332,7 +384,9 @@ impl InferenceProvider for OpenAIClient {
             _ => "unknown",
         }
     }
-    fn model(&self) -> &str { &self.model }
+    fn model(&self) -> &str {
+        &self.model
+    }
 
     async fn analyze_image(&self, image_path: &str) -> AppResult<AIResult> {
         let image_base64 = encode_image_to_base64(image_path)?;
@@ -353,7 +407,9 @@ impl InferenceProvider for OpenAIClient {
         });
 
         let url = match &self.provider_type {
-            InferenceProviderType::OpenAI => "https://api.openai.com/v1/chat/completions".to_string(),
+            InferenceProviderType::OpenAI => {
+                "https://api.openai.com/v1/chat/completions".to_string()
+            }
             InferenceProviderType::OpenRouter => {
                 if self.base_url.is_empty() {
                     "https://openrouter.ai/api/v1/chat/completions".to_string()
@@ -361,10 +417,15 @@ impl InferenceProvider for OpenAIClient {
                     format!("{}/v1/chat/completions", self.base_url)
                 }
             }
-            _ => return Err(AppError::validation("不支持的 OpenAI 兼容提供者".to_string())),
+            _ => {
+                return Err(AppError::validation(
+                    "不支持的 OpenAI 兼容提供者".to_string(),
+                ))
+            }
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -376,15 +437,25 @@ impl InferenceProvider for OpenAIClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::validation(format!("{} 推理失败: HTTP {} - {}", self.name(), status, body)));
+            return Err(AppError::validation(format!(
+                "{} 推理失败: HTTP {} - {}",
+                self.name(),
+                status,
+                body
+            )));
         }
 
-        let body: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::validation(format!("解析 {} 响应失败: {}", self.name(), e))
-        })?;
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::validation(format!("解析 {} 响应失败: {}", self.name(), e)))?;
 
-        let content = body.get("choices").and_then(|c| c.as_array()).and_then(|arr| arr.first())
-            .and_then(|choice| choice.get("message")).and_then(|msg| msg.get("content"))
+        let content = body
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|choice| choice.get("message"))
+            .and_then(|msg| msg.get("content"))
             .and_then(|c| c.as_str())
             .ok_or_else(|| AppError::validation(format!("{} 响应格式不正确", self.name())))?;
 
@@ -416,12 +487,19 @@ impl ModelDiscoveryService {
         let services = vec![
             ("lm_studio", "LM Studio", "http://127.0.0.1:1234", 1234),
             ("ollama", "Ollama", "http://127.0.0.1:11434", 11434),
-            ("hermes", "Hermes One-Click", "http://127.0.0.1:18789", 18789),
+            (
+                "hermes",
+                "Hermes One-Click",
+                "http://127.0.0.1:18789",
+                18789,
+            ),
         ];
 
         let mut results = Vec::new();
         for (provider_key, provider_label, base_url, port) in services {
-            if let Ok(models) = Self::scan_service(provider_key, provider_label, base_url, port).await {
+            if let Ok(models) =
+                Self::scan_service(provider_key, provider_label, base_url, port).await
+            {
                 results.extend(models);
             }
         }
@@ -442,7 +520,9 @@ impl ModelDiscoveryService {
         // Step 1: Get all available models from /v1/models
         let url = format!("{}/v1/models", base_url);
         let resp = client.get(&url).send().await.map_err(|_| ())?;
-        if !resp.status().is_success() { return Err(()); }
+        if !resp.status().is_success() {
+            return Err(());
+        }
 
         let body: serde_json::Value = resp.json().await.map_err(|_| ())?;
         let models = body.get("data").and_then(|d| d.as_array()).ok_or(())?;
@@ -453,7 +533,10 @@ impl ModelDiscoveryService {
         // Step 3: Build result list with loaded status
         let mut results = Vec::new();
         for model in models {
-            let model_id = model.get("id").and_then(|m| m.as_str()).unwrap_or("unknown");
+            let model_id = model
+                .get("id")
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown");
             let model_name = model.get("name").and_then(|m| m.as_str()).map(String::from);
 
             // Check if this specific model is loaded
@@ -493,12 +576,16 @@ impl ModelDiscoveryService {
         base_url: &str,
     ) -> std::collections::HashSet<String> {
         // Strategy 1: Try LM Studio's internal API for loaded models
-        if let Some(loaded) = try_get_loaded_from_api(client, &format!("{}/api/models/loaded", base_url)).await {
+        if let Some(loaded) =
+            try_get_loaded_from_api(client, &format!("{}/api/models/loaded", base_url)).await
+        {
             return loaded;
         }
 
         // Strategy 2: Parse status from /v1/models response (some versions include it)
-        if let Some(loaded) = try_parse_status_from_v1_models(client, &format!("{}/v1/models", base_url)).await {
+        if let Some(loaded) =
+            try_parse_status_from_v1_models(client, &format!("{}/v1/models", base_url)).await
+        {
             return loaded;
         }
 
@@ -512,7 +599,12 @@ impl ModelDiscoveryService {
         base_url: &str,
     ) -> std::collections::HashSet<String> {
         let url = format!("{}/api/ps", base_url);
-        match client.get(&url).timeout(Duration::from_secs(2)).send().await {
+        match client
+            .get(&url)
+            .timeout(Duration::from_secs(2))
+            .send()
+            .await
+        {
             Ok(resp) if resp.status().is_success() => {
                 match resp.json::<serde_json::Value>().await {
                     Ok(body) => {
@@ -539,7 +631,9 @@ impl ModelDiscoveryService {
         base_url: &str,
     ) -> std::collections::HashSet<String> {
         // Hermes uses OpenAI-compatible API; try parsing status from /v1/models
-        try_parse_status_from_v1_models(client, &format!("{}/v1/models", base_url)).await.unwrap_or_default()
+        try_parse_status_from_v1_models(client, &format!("{}/v1/models", base_url))
+            .await
+            .unwrap_or_default()
     }
 }
 
@@ -548,19 +642,29 @@ async fn try_get_loaded_from_api(
     client: &reqwest::Client,
     url: &str,
 ) -> Option<std::collections::HashSet<String>> {
-    let resp = client.get(url).timeout(Duration::from_secs(2)).send().await.ok()?;
-    if !resp.status().is_success() { return None; }
+    let resp = client
+        .get(url)
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
 
     let body: serde_json::Value = resp.json().await.ok()?;
     let mut set = std::collections::HashSet::new();
 
     // Try both "models" and "data" keys
-    let arr = body.get("models")
+    let arr = body
+        .get("models")
         .or_else(|| body.get("data"))
         .and_then(|a| a.as_array())?;
 
     for item in arr {
-        let id = item.get("id").and_then(|v| v.as_str())
+        let id = item
+            .get("id")
+            .and_then(|v| v.as_str())
             .or_else(|| item.get("name").and_then(|v| v.as_str()));
         if let Some(id) = id {
             set.insert(id.to_string());
@@ -575,8 +679,15 @@ async fn try_parse_status_from_v1_models(
     client: &reqwest::Client,
     url: &str,
 ) -> Option<std::collections::HashSet<String>> {
-    let resp = client.get(url).timeout(Duration::from_secs(2)).send().await.ok()?;
-    if !resp.status().is_success() { return None; }
+    let resp = client
+        .get(url)
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
 
     let body: serde_json::Value = resp.json().await.ok()?;
     let models = body.get("data").and_then(|d| d.as_array())?;
@@ -606,7 +717,10 @@ mod tests {
     #[test]
     fn test_provider_config_default() {
         let config = ProviderConfig::default();
-        assert!(matches!(config.provider_type, InferenceProviderType::LMStudio));
+        assert!(matches!(
+            config.provider_type,
+            InferenceProviderType::LMStudio
+        ));
         assert_eq!(config.base_url, "http://127.0.0.1:1234");
     }
 
@@ -682,19 +796,19 @@ mod tests {
             timeout_secs: 60,
             api_key: None,
         };
-        
+
         // 验证 ProviderFactory 能正确创建 Hermes 提供者
         let provider = ProviderFactory::create(config);
         assert!(provider.is_ok(), "Hermes Provider 应该能成功创建");
-        
+
         let provider = provider.unwrap();
-        
+
         // 验证名称正确
         assert_eq!(provider.name(), "hermes", "Provider 名称应为 'hermes'");
-        
+
         // 验证模型正确
         assert_eq!(provider.model(), "Qwen2.5-VL-7B-Instruct", "模型名称应匹配");
-        
+
         // 验证 Hermes 使用 OpenAI 兼容适配器（通过 trait 对象调用方法）
         // 实际协议兼容性通过 OpenAICompatibleAdapter 实现
         // 该适配器使用 LMStudioClient，已验证支持 OpenAI 兼容 API
@@ -704,29 +818,29 @@ mod tests {
     fn test_hermes_openai_compatible_adapter_behavior() {
         // 验证 Hermes 的 OpenAI 兼容适配器行为
         // 确保 Hermes 与 LM Studio、Ollama 使用相同的适配器模式
-        
+
         let hermes_config = ProviderConfig {
             provider_type: InferenceProviderType::Hermes,
             base_url: "http://127.0.0.1:18789".to_string(),
             model: "test-model".to_string(),
             ..Default::default()
         };
-        
+
         let lm_config = ProviderConfig {
             provider_type: InferenceProviderType::LMStudio,
             base_url: "http://127.0.0.1:1234".to_string(),
             model: "test-model".to_string(),
             ..Default::default()
         };
-        
+
         let hermes_provider = ProviderFactory::create(hermes_config).unwrap();
         let lm_provider = ProviderFactory::create(lm_config).unwrap();
-        
+
         // 两者应该都是 OpenAICompatibleAdapter 类型（通过行为验证）
         // 验证它们都实现了 InferenceProvider trait
         assert_eq!(hermes_provider.name(), "hermes");
         assert_eq!(lm_provider.name(), "lm_studio");
-        
+
         // 验证模型名称传递正确
         assert_eq!(hermes_provider.model(), "test-model");
         assert_eq!(lm_provider.model(), "test-model");
@@ -735,13 +849,10 @@ mod tests {
     #[test]
     fn test_zhipu_provider_creation() {
         // 测试智谱 Provider 创建
-        let provider = ZhipuProvider::new(
-            "glm-4v-flash".to_string(),
-            "test-api-key".to_string(),
-            60,
-        );
+        let provider =
+            ZhipuProvider::new("glm-4v-flash".to_string(), "test-api-key".to_string(), 60);
         assert!(provider.is_ok());
-        
+
         let provider = provider.unwrap();
         assert_eq!(provider.name(), "zhipu");
         assert_eq!(provider.model(), "glm-4v-flash");
@@ -751,16 +862,13 @@ mod tests {
     fn test_zhipu_provider_request_format() {
         // 验证智谱 API 请求格式构造
         // 智谱使用 OpenAI 兼容格式，但有自己的认证方式
-        let provider = ZhipuProvider::new(
-            "glm-4v-flash".to_string(),
-            "test-api-key".to_string(),
-            60,
-        ).unwrap();
-        
+        let provider =
+            ZhipuProvider::new("glm-4v-flash".to_string(), "test-api-key".to_string(), 60).unwrap();
+
         // 验证基本属性
         assert_eq!(provider.name(), "zhipu");
         assert_eq!(provider.model(), "glm-4v-flash");
-        
+
         // 注意：实际的 HTTP 请求测试需要 mock 服务器
         // 这里验证 Provider 能正确创建和配置
     }
@@ -870,12 +978,9 @@ mod tests {
     #[test]
     fn test_zhipu_health_check() {
         // 测试智谱 Provider 的健康检查
-        let provider = ZhipuProvider::new(
-            "glm-4v-flash".to_string(),
-            "test-api-key".to_string(),
-            60,
-        ).unwrap();
-        
+        let provider =
+            ZhipuProvider::new("glm-4v-flash".to_string(), "test-api-key".to_string(), 60).unwrap();
+
         // health_check 是 async 方法，需要 tokio runtime
         // 这里只验证 Provider 能正确创建
         assert_eq!(provider.name(), "zhipu");
@@ -892,7 +997,7 @@ mod tests {
             60,
         );
         assert!(client.is_ok());
-        
+
         let client = client.unwrap();
         assert_eq!(client.name(), "openai");
         assert_eq!(client.model(), "gpt-4o");
@@ -909,7 +1014,7 @@ mod tests {
             60,
         );
         assert!(client.is_ok());
-        
+
         let client = client.unwrap();
         assert_eq!(client.name(), "openrouter");
         assert_eq!(client.model(), "anthropic/claude-3.5-sonnet");
@@ -926,7 +1031,7 @@ mod tests {
             60,
         );
         assert!(client.is_ok());
-        
+
         let client = client.unwrap();
         assert_eq!(client.name(), "openai");
         assert_eq!(client.model(), "gpt-4o");
@@ -943,7 +1048,7 @@ mod tests {
             60,
         );
         assert!(client.is_ok());
-        
+
         let client = client.unwrap();
         assert_eq!(client.name(), "openrouter");
         assert_eq!(client.model(), "meta-llama/llama-3.2-11b-vision-instruct");
@@ -1100,7 +1205,7 @@ mod tests {
             model_name: Some("Qwen2.5 VL 7B".to_string()),
             port: 1234,
             is_online: true,
-            loaded: true,  // 新增字段：模型已加载到 VRAM
+            loaded: true, // 新增字段：模型已加载到 VRAM
         };
 
         assert_eq!(model.provider, "lm_studio");
@@ -1110,7 +1215,7 @@ mod tests {
         assert_eq!(model.model_name, Some("Qwen2.5 VL 7B".to_string()));
         assert_eq!(model.port, 1234);
         assert!(model.is_online);
-        assert!(model.loaded);  // 验证新字段
+        assert!(model.loaded); // 验证新字段
 
         // 测试未加载状态
         let unloaded_model = DiscoveredModel {
@@ -1121,7 +1226,7 @@ mod tests {
             model_name: None,
             port: 1234,
             is_online: true,
-            loaded: false,  // 模型可用但未加载到 VRAM
+            loaded: false, // 模型可用但未加载到 VRAM
         };
         assert!(!unloaded_model.loaded);
     }
@@ -1131,14 +1236,10 @@ mod tests {
         // 验证 ModelDiscoveryService 扫描的端口配置
         // 注意：scan_all() 是 async 方法，需要 tokio runtime
         // 这里验证端口配置是否正确
-        
+
         // 预期扫描的服务端口
-        let expected_ports = vec![
-            ("lm_studio", 1234),
-            ("ollama", 11434),
-            ("hermes", 18789),
-        ];
-        
+        let expected_ports = vec![("lm_studio", 1234), ("ollama", 11434), ("hermes", 18789)];
+
         for (provider, port) in expected_ports {
             match provider {
                 "lm_studio" => assert_eq!(port, 1234),
@@ -1157,7 +1258,7 @@ mod tests {
             ("ollama", "http://127.0.0.1:11434"),
             ("hermes", "http://127.0.0.1:18789"),
         ];
-        
+
         for (provider, url) in expected_urls {
             match provider {
                 "lm_studio" => assert_eq!(url, "http://127.0.0.1:1234"),
@@ -1188,13 +1289,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = ModelDiscoveryService::scan_service(
-            "lm_studio",
-            "LM Studio",
-            &mock_url,
-            1234,
-        )
-        .await;
+        let result =
+            ModelDiscoveryService::scan_service("lm_studio", "LM Studio", &mock_url, 1234).await;
 
         assert!(result.is_ok());
         let models = result.unwrap();
@@ -1230,28 +1326,19 @@ mod tests {
             .create_async()
             .await;
 
-        let result = ModelDiscoveryService::scan_service(
-            "lm_studio",
-            "LM Studio",
-            &mock_url,
-            1234,
-        )
-        .await;
+        let result =
+            ModelDiscoveryService::scan_service("lm_studio", "LM Studio", &mock_url, 1234).await;
 
         assert!(result.is_err());
     }
 
     fn create_minimal_png(path: &std::path::Path) {
         let png: [u8; 69] = [
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-            0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
-            0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
-            0x00, 0x00, 0x03, 0x00, 0x01, 0x47, 0x53, 0x9C,
-            0x1D, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
-            0x44, 0xAE, 0x42, 0x60, 0x82,
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00,
+            0x00, 0x90, 0x77, 0x53, 0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, 0x08,
+            0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x47, 0x53, 0x9C,
+            0x1D, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
         std::fs::write(path, &png).unwrap();
     }

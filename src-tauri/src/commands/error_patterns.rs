@@ -51,7 +51,7 @@ pub fn get_error_patterns(
          FROM error_patterns 
          WHERE occurrence_count >= ?1 
          ORDER BY occurrence_count DESC 
-         LIMIT ?2"
+         LIMIT ?2",
     )?;
 
     let patterns = stmt
@@ -81,28 +81,27 @@ pub fn check_error_pattern_exists(
     let mut stmt = conn.prepare(
         "SELECT id, pattern_name, pattern_description, occurrence_count, first_seen, last_seen 
          FROM error_patterns 
-         WHERE pattern_name = ?1"
+         WHERE pattern_name = ?1",
     )?;
 
-    let pattern = stmt.query_row(params![pattern_name], |row| {
-        Ok(ErrorPattern {
-            id: row.get(0)?,
-            pattern_name: row.get(1)?,
-            pattern_description: row.get(2)?,
-            occurrence_count: row.get(3)?,
-            first_seen: row.get(4)?,
-            last_seen: row.get(5)?,
+    let pattern = stmt
+        .query_row(params![pattern_name], |row| {
+            Ok(ErrorPattern {
+                id: row.get(0)?,
+                pattern_name: row.get(1)?,
+                pattern_description: row.get(2)?,
+                occurrence_count: row.get(3)?,
+                first_seen: row.get(4)?,
+                last_seen: row.get(5)?,
+            })
         })
-    }).ok();
+        .ok();
 
     Ok(pattern)
 }
 
 #[tauri::command]
-pub fn delete_error_pattern(
-    db: State<'_, Database>,
-    pattern_id: i64,
-) -> AppResult<()> {
+pub fn delete_error_pattern(db: State<'_, Database>, pattern_id: i64) -> AppResult<()> {
     let conn = db.open_connection()?;
 
     conn.execute(

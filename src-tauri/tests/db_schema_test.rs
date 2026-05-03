@@ -7,14 +7,17 @@ mod tests {
 
     fn setup_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        
+
         // Enable WAL mode
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             PRAGMA journal_mode=WAL;
             PRAGMA foreign_keys=ON;
             PRAGMA busy_timeout=5000;
-        ").unwrap();
-        
+        ",
+        )
+        .unwrap();
+
         // Run v1 initial schema (copied from db.rs)
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS images (
@@ -108,17 +111,21 @@ mod tests {
             
             PRAGMA user_version = 1;
         ").unwrap();
-        
+
         conn
     }
 
     #[test]
     fn test_images_table_exists() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name='images'
-        ").unwrap();
+        ",
+            )
+            .unwrap();
         let exists = stmt.exists([]).unwrap();
         assert!(exists, "images table should exist");
     }
@@ -127,84 +134,134 @@ mod tests {
     fn test_images_table_columns() {
         let conn = setup_test_db();
         let mut stmt = conn.prepare("PRAGMA table_info(images)").unwrap();
-        let columns: Vec<String> = stmt.query_map([], |row| {
-            row.get::<_, String>(1)
-        }).unwrap().map(|r| r.unwrap()).collect();
-        
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
         let expected_columns = vec![
-            "id", "file_path", "file_name", "file_size", "file_hash",
-            "mime_type", "width", "height", "thumbnail_path", "phash",
-            "exif_data", "ai_status", "ai_tags", "ai_description",
-            "ai_category", "ai_confidence", "ai_model", "ai_processed_at",
-            "ai_error_message", "ai_retry_count", "source", "created_at", "updated_at"
+            "id",
+            "file_path",
+            "file_name",
+            "file_size",
+            "file_hash",
+            "mime_type",
+            "width",
+            "height",
+            "thumbnail_path",
+            "phash",
+            "exif_data",
+            "ai_status",
+            "ai_tags",
+            "ai_description",
+            "ai_category",
+            "ai_confidence",
+            "ai_model",
+            "ai_processed_at",
+            "ai_error_message",
+            "ai_retry_count",
+            "source",
+            "created_at",
+            "updated_at",
         ];
-        
+
         for col in expected_columns {
-            assert!(columns.contains(&col.to_string()), "images table should have column: {}", col);
+            assert!(
+                columns.contains(&col.to_string()),
+                "images table should have column: {}",
+                col
+            );
         }
     }
 
     #[test]
     fn test_tags_table_exists() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name='tags'
-        ").unwrap();
+        ",
+            )
+            .unwrap();
         assert!(stmt.exists([]).unwrap(), "tags table should exist");
     }
 
     #[test]
     fn test_image_tags_table_exists() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name='image_tags'
-        ").unwrap();
+        ",
+            )
+            .unwrap();
         assert!(stmt.exists([]).unwrap(), "image_tags table should exist");
     }
 
     #[test]
     fn test_search_index_table_exists() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name='search_index'
-        ").unwrap();
+        ",
+            )
+            .unwrap();
         assert!(stmt.exists([]).unwrap(), "search_index table should exist");
     }
 
     #[test]
     fn test_task_queue_table_exists() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name='task_queue'
-        ").unwrap();
+        ",
+            )
+            .unwrap();
         assert!(stmt.exists([]).unwrap(), "task_queue table should exist");
     }
 
     #[test]
     fn test_app_config_table_exists() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name='app_config'
-        ").unwrap();
+        ",
+            )
+            .unwrap();
         assert!(stmt.exists([]).unwrap(), "app_config table should exist");
     }
 
     #[test]
     fn test_images_indexes() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='index' AND tbl_name='images'
-        ").unwrap();
-        let indexes: Vec<String> = stmt.query_map([], |row| {
-            row.get::<_, String>(0)
-        }).unwrap().map(|r| r.unwrap()).collect();
-        
+        ",
+            )
+            .unwrap();
+        let indexes: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
         assert!(indexes.contains(&"idx_images_ai_status".to_string()));
         assert!(indexes.contains(&"idx_images_created_at".to_string()));
         assert!(indexes.contains(&"idx_images_file_hash".to_string()));
@@ -213,14 +270,20 @@ mod tests {
     #[test]
     fn test_search_index_indexes() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='index' AND tbl_name='search_index'
-        ").unwrap();
-        let indexes: Vec<String> = stmt.query_map([], |row| {
-            row.get::<_, String>(0)
-        }).unwrap().map(|r| r.unwrap()).collect();
-        
+        ",
+            )
+            .unwrap();
+        let indexes: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
         assert!(indexes.contains(&"idx_search_index_term".to_string()));
         assert!(indexes.contains(&"idx_search_index_image_id".to_string()));
     }
@@ -228,14 +291,20 @@ mod tests {
     #[test]
     fn test_task_queue_indexes() {
         let conn = setup_test_db();
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT name FROM sqlite_master 
             WHERE type='index' AND tbl_name='task_queue'
-        ").unwrap();
-        let indexes: Vec<String> = stmt.query_map([], |row| {
-            row.get::<_, String>(0)
-        }).unwrap().map(|r| r.unwrap()).collect();
-        
+        ",
+            )
+            .unwrap();
+        let indexes: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
         assert!(indexes.contains(&"idx_task_queue_status".to_string()));
         assert!(indexes.contains(&"idx_task_queue_priority".to_string()));
     }
@@ -244,13 +313,18 @@ mod tests {
     fn test_app_config_default_values() {
         let conn = setup_test_db();
         let mut stmt = conn.prepare("SELECT key, value FROM app_config").unwrap();
-        let configs: Vec<(String, String)> = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        }).unwrap().map(|r| r.unwrap()).collect();
-        
+        let configs: Vec<(String, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
         let config_map: std::collections::HashMap<String, String> = configs.into_iter().collect();
-        
-        assert_eq!(config_map.get("lm_studio_url").unwrap(), "http://localhost:1234");
+
+        assert_eq!(
+            config_map.get("lm_studio_url").unwrap(),
+            "http://localhost:1234"
+        );
         assert_eq!(config_map.get("ai_concurrency").unwrap(), "3");
         assert_eq!(config_map.get("ai_timeout_seconds").unwrap(), "60");
         assert_eq!(config_map.get("ai_max_retries").unwrap(), "3");
@@ -262,18 +336,18 @@ mod tests {
     #[test]
     fn test_user_version() {
         let conn = setup_test_db();
-        let version: i32 = conn.pragma_query_value(None, "user_version", |row| {
-            row.get(0)
-        }).unwrap();
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
         assert_eq!(version, 1, "Database user_version should be 1");
     }
 
     #[test]
     fn test_foreign_keys_enabled() {
         let conn = setup_test_db();
-        let fk_enabled: i32 = conn.pragma_query_value(None, "foreign_keys", |row| {
-            row.get(0)
-        }).unwrap();
+        let fk_enabled: i32 = conn
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .unwrap();
         assert_eq!(fk_enabled, 1, "Foreign keys should be enabled");
     }
 
@@ -282,15 +356,18 @@ mod tests {
         let conn = setup_test_db();
         conn.execute(
             "INSERT INTO images (file_path, file_name, file_size) VALUES (?, ?, ?)",
-            rusqlite::params!["/test/image.jpg", "image.jpg", 1024]
-        ).unwrap();
-        
-        let (ai_status, ai_retry_count, source): (String, i32, String) = conn.query_row(
-            "SELECT ai_status, ai_retry_count, source FROM images WHERE file_path = ?",
-            ["/test/image.jpg"],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        ).unwrap();
-        
+            rusqlite::params!["/test/image.jpg", "image.jpg", 1024],
+        )
+        .unwrap();
+
+        let (ai_status, ai_retry_count, source): (String, i32, String) = conn
+            .query_row(
+                "SELECT ai_status, ai_retry_count, source FROM images WHERE file_path = ?",
+                ["/test/image.jpg"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+
         assert_eq!(ai_status, "pending");
         assert_eq!(ai_retry_count, 0);
         assert_eq!(source, "import");
@@ -299,10 +376,14 @@ mod tests {
     #[test]
     fn test_tags_case_insensitive() {
         let conn = setup_test_db();
-        conn.execute("INSERT INTO tags (name) VALUES (?)", ["nature"]).unwrap();
-        
+        conn.execute("INSERT INTO tags (name) VALUES (?)", ["nature"])
+            .unwrap();
+
         // Try to insert same tag with different case - should fail due to UNIQUE COLLATE NOCASE
         let result = conn.execute("INSERT INTO tags (name) VALUES (?)", ["Nature"]);
-        assert!(result.is_err(), "Tag names should be case-insensitive unique");
+        assert!(
+            result.is_err(),
+            "Tag names should be case-insensitive unique"
+        );
     }
 }

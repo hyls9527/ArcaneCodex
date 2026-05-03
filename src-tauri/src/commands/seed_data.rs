@@ -1,7 +1,7 @@
 use crate::core::db::Database;
-use crate::utils::error::{AppResult, AppError};
+use crate::utils::error::{AppError, AppResult};
+use serde::{Deserialize, Serialize};
 use tauri::State;
-use serde::{Serialize, Deserialize};
 use tracing::info;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -125,11 +125,9 @@ const SAMPLE_ENTRIES: &[SampleEntry] = &[
 pub fn seed_if_empty(db: &Database) -> AppResult<()> {
     let conn = db.open_connection().map_err(AppError::database)?;
 
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM images",
-        [],
-        |row| row.get(0),
-    ).map_err(AppError::database)?;
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0))
+        .map_err(AppError::database)?;
 
     if count > 0 {
         info!("Database already has {} images, skipping seed", count);
@@ -165,7 +163,8 @@ pub fn seed_if_empty(db: &Database) -> AppResult<()> {
                 entry.source,
                 "sample",
             ],
-        ).map_err(AppError::database)?;
+        )
+        .map_err(AppError::database)?;
     }
 
     info!("Seeded {} sample images", SAMPLE_ENTRIES.len());
@@ -176,11 +175,13 @@ pub fn seed_if_empty(db: &Database) -> AppResult<()> {
 pub fn check_sample_data(db: State<'_, Database>) -> AppResult<SampleDataStatus> {
     let conn = db.open_connection().map_err(AppError::database)?;
 
-    let sample_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM images WHERE source = 'sample'",
-        [],
-        |row| row.get(0),
-    ).map_err(AppError::database)?;
+    let sample_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM images WHERE source = 'sample'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(AppError::database)?;
 
     Ok(SampleDataStatus {
         has_sample_data: sample_count > 0,
@@ -197,10 +198,9 @@ pub fn clear_sample_data(db: State<'_, Database>) -> AppResult<i64> {
         [],
     ).map_err(AppError::database)?;
 
-    let deleted = conn.execute(
-        "DELETE FROM images WHERE source = 'sample'",
-        [],
-    ).map_err(AppError::database)?;
+    let deleted = conn
+        .execute("DELETE FROM images WHERE source = 'sample'", [])
+        .map_err(AppError::database)?;
 
     info!("Cleared {} sample images", deleted);
     Ok(deleted as i64)

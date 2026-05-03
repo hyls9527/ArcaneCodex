@@ -1,3 +1,3 @@
-pub mod hash;
-pub mod error;
 pub mod crypto;
+pub mod error;
+pub mod hash;

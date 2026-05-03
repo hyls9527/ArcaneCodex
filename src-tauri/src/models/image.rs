@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]
@@ -47,9 +47,13 @@ impl Image {
             height: row.get(7)?,
             thumbnail_path: row.get(8)?,
             phash: row.get(9)?,
-            exif_data: row.get::<_, Option<String>>(10)?.map(|s| serde_json::from_str(&s).unwrap_or(serde_json::json!({}))),
+            exif_data: row
+                .get::<_, Option<String>>(10)?
+                .map(|s| serde_json::from_str(&s).unwrap_or(serde_json::json!({}))),
             ai_status: row.get(11)?,
-            ai_tags: row.get::<_, Option<String>>(12)?.map(|s| serde_json::from_str(&s).unwrap_or(serde_json::json!([]))),
+            ai_tags: row
+                .get::<_, Option<String>>(12)?
+                .map(|s| serde_json::from_str(&s).unwrap_or(serde_json::json!([]))),
             ai_description: row.get(13)?,
             ai_category: row.get(14)?,
             ai_confidence: row.get(15)?,
@@ -59,7 +63,9 @@ impl Image {
             ai_retry_count: row.get(19)?,
             source: row.get(20)?,
             generation_source: row.get(21)?,
-            generation_metadata: row.get::<_, Option<String>>(22)?.map(|s| serde_json::from_str(&s).unwrap_or(serde_json::json!({}))),
+            generation_metadata: row
+                .get::<_, Option<String>>(22)?
+                .map(|s| serde_json::from_str(&s).unwrap_or(serde_json::json!({}))),
             generation_workflow_id: row.get(23)?,
             ai_provider: row.get(24)?,
             ai_tag_status: row.get(25)?,
