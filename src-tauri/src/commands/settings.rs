@@ -713,7 +713,11 @@ pub async fn restore_database_encrypted(
 
         let decrypted_data = cipher
             .decrypt(nonce, encrypted_data.as_ref())
-            .map_err(|_| AppError::config("Decryption failed. Invalid password or corrupted file.".to_string()))?;
+            .map_err(|_| {
+                AppError::config(
+                    "Decryption failed. Invalid password or corrupted file.".to_string(),
+                )
+            })?;
 
         let cursor = std::io::Cursor::new(decrypted_data);
         let mut archive = ZipArchive::new(cursor)
@@ -752,8 +756,9 @@ pub async fn restore_database_encrypted(
             } else {
                 if let Some(p) = outpath.parent() {
                     if !p.exists() {
-                        std::fs::create_dir_all(p)
-                            .map_err(|e| AppError::config(format!("Failed to create directory: {}", e)))?;
+                        std::fs::create_dir_all(p).map_err(|e| {
+                            AppError::config(format!("Failed to create directory: {}", e))
+                        })?;
                     }
                 }
             }
