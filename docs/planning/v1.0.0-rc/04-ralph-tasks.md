@@ -1076,11 +1076,11 @@
     - [x] 验证编译通过
 
 ### 9.4 编译验证
-- [~] **9.4.1 双端验证** (部分通过，系统级阻塞)
-    - [-] cargo check 零编译错误 — **阻塞: rustc 1.95.0 STATUS_ACCESS_VIOLATION (已知工具链 bug, rustup install 也崩溃)**
+- [~] **9.4.1 双端验证** (部分通过)
+    - [x] cargo check 零编译错误 — ✅ 通过 (1m 13s, 修复: 清除错误的 RUSTC_WRAPPER 环境变量)
     - [x] tsc --noEmit 零类型错误 — ✅ 通过 (exit 0)
-    - [-] cargo test 全部通过 — **阻塞: 同上 (依赖 cargo check)**
-    - [x] npx vitest run 全部通过 — ✅ 14/14 文件 (202 tests) 全部通过 (--pool=forks 绕过 STATUS_ACCESS_VIOLATION)
+    - [-] cargo test 全部通过 — **阻塞: STATUS_ENTRYPOINT_NOT_FOUND (测试可执行文件编译成功但运行失败)**
+    - [x] npx vitest run 全部通过 — ✅ 17/17 文件 (223 tests) 全部通过 (--pool=forks 绕过 STATUS_ACCESS_VIOLATION)
 
 ---
 
