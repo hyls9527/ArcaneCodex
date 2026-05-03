@@ -4,9 +4,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)]()
-[![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)]()
+[![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)]()
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)]()
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8DB.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-223%20passing-brightgreen)]()
+[![Code Quality](https://img.shields.io/badge/Code%20Quality-A-brightgreen)]()
 
 ---
 
@@ -16,17 +18,17 @@
 
 所以写了 Arcane Codex。它用 AI 理解照片内容，用自然语言找到你想要的那一张，全部运行在本地——你的照片从来不离开你的硬盘。
 
-## 为什么选 Arcane Codex
+## ✨ 核心特性
 
 | 特性 | 说明 |
 |------|------|
-| **本地优先** | 所有数据存储和处理都在本地完成，无需上传，无需联网 |
-| **AI 理解内容** | 不是文件名搜索，是真正理解画面——"那只橘猫"、"去年夏天的海边" |
-| **智能去重** | BK-Tree + 感知哈希，几万张图片依然流畅 |
-| **语义搜索** | 自然语言查询，不是关键词匹配 |
-| **隐私无忧** | 照片不上传，标签不上传，一切都在你的硬盘上 |
+| 🔒 **本地优先** | 所有数据存储和处理都在本地完成，无需上传，无需联网 |
+| 🤖 **AI 理解内容** | 不是文件名搜索，是真正理解画面——"那只橘猫"、"去年夏天的海边" |
+| 🔍 **智能去重** | BK-Tree + 感知哈希，几万张图片依然流畅 |
+| 💬 **语义搜索** | 自然语言查询，不是关键词匹配 |
+| 🛡️ **隐私无忧** | 照片不上传，标签不上传，一切都在你的硬盘上 |
 
-## AI 打标效果
+## 🎯 AI 打标效果
 
 ```
 Before:  IMG_20240315_001.jpg
@@ -42,24 +44,44 @@ After:   一只橘猫蜷缩在沙发上打盹
          Confidence: 0.91
 ```
 
-## 一键安装
+## 🚀 快速开始
 
-1. 前往 [Releases](https://github.com/hyls9527/arcane-codex/releases) 下载最新安装包
+### 一键安装
+
+1. 前往 [Releases](https://github.com/hyls9527/ArcaneCodex/releases) 下载最新安装包
 2. 双击运行安装程序
 3. 启动应用，拖入照片，开始体验
 
-**从源码构建：**
+### 从源码构建
 
 ```bash
-git clone https://github.com/hyls9527/arcane-codex.git
-cd arcane-codex
+# 克隆仓库
+git clone https://github.com/hyls9527/ArcaneCodex.git
+cd ArcaneCodex
+
+# 安装依赖
 npm install
+
+# 开发模式
 npm run tauri dev
+
+# 构建发布版本
+npm run tauri build
 ```
 
-前置条件：Node.js 18+、Rust 1.70+、Windows 10+
+**前置条件：**
+- Node.js 20+
+- Rust 1.75+
+- Windows 10+
 
-## 技术栈
+## 📚 文档
+
+- [API 文档](docs/api.md) - 完整的 Tauri 命令 API 参考
+- [架构文档](docs/architecture.md) - 系统架构和技术细节
+- [贡献指南](CONTRIBUTING.md) - 如何参与开发
+- [安全政策](SECURITY.md) - 安全报告和最佳实践
+
+## 🛠️ 技术栈
 
 | 层级 | 技术 | 为什么选它 |
 |------|------|-----------|
@@ -68,19 +90,19 @@ npm run tauri dev
 | 数据库 | SQLite (WAL) | 零配置、单文件、可靠 |
 | AI | OpenAI 兼容 API | 接入任何 LLM 服务 |
 | 状态管理 | Zustand | 轻量、无 boilerplate |
-| 测试 | Vitest + Cargo test | 202 个前端测试 + Rust 内联测试 |
+| 测试 | Vitest + Cargo test | 223 个前端测试 + Rust 内联测试 |
 
-## 隐私保护
+## 🔐 隐私保护
 
 Arcane Codex 的设计哲学是**本地优先**：
 
-- 照片文件始终保存在你的硬盘上，应用不会复制或上传任何原图
-- AI 分析在本地运行（LM Studio / Ollama），或通过你自行配置的 API 完成
-- 不收集任何使用数据、不发送遥测信息、不连接任何第三方服务器
-- 数据库是本地 SQLite 文件，你完全拥有和控制所有数据
-- 支持数据备份和恢复，迁移自由
+- ✅ 照片文件始终保存在你的硬盘上，应用不会复制或上传任何原图
+- ✅ AI 分析在本地运行（LM Studio / Ollama），或通过你自行配置的 API 完成
+- ✅ 不收集任何使用数据、不发送遥测信息、不连接任何第三方服务器
+- ✅ 数据库是本地 SQLite 文件，你完全拥有和控制所有数据
+- ✅ 支持数据备份和恢复，迁移自由
 
-## 功能矩阵
+## 📋 功能矩阵
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
@@ -99,51 +121,52 @@ Arcane Codex 的设计哲学是**本地优先**：
 | HEIC/HEIF | ❌ | 暂不支持，需先转换格式 |
 | macOS/Linux | ❌ | 暂仅支持 Windows |
 
-## 项目结构
+## 📁 项目结构
 
 ```
-arcane-codex/
-├── frontend/          # React + TypeScript 前端
+ArcaneCodex/
+├── .github/              # GitHub 配置 (CI/CD, Issue 模板)
+├── docs/                 # 文档
+│   ├── api.md            # API 文档
+│   ├── architecture.md   # 架构文档
+│   └── screenshots/      # 截图
+├── frontend/             # React + TypeScript 前端
 │   ├── src/
-│   │   ├── components/    # UI 组件
-│   │   ├── pages/         # 页面
-│   │   ├── stores/        # Zustand 状态管理
-│   │   ├── lib/           # API 层 + 工具函数
-│   │   ├── i18n/          # 国际化
-│   │   └── test/          # 测试
-│   └── vite.config.ts
-├── src-tauri/         # Rust 后端
+│   │   ├── components/   # UI 组件
+│   │   ├── hooks/        # 自定义 Hooks
+│   │   ├── stores/       # Zustand 状态管理
+│   │   ├── lib/          # API 层 + 工具函数
+│   │   └── i18n/         # 国际化
+│   └── tests/            # 测试文件
+├── src-tauri/            # Rust 后端
 │   ├── src/
-│   │   ├── commands/      # Tauri 命令
-│   │   ├── core/          # 核心逻辑
-│   │   ├── models/        # 数据模型
-│   │   └── utils/         # 工具函数
+│   │   ├── commands/     # Tauri 命令
+│   │   ├── core/         # 核心逻辑
+│   │   └── utils/        # 工具函数
 │   └── Cargo.toml
-└── docs/              # 文档
+└── package.json          # 根配置
 ```
 
-## 相关项目
+## 🤝 贡献
 
-- **[Nexus](https://github.com/hyls9527/nexus)** — 如果你在寻找一个更通用的本地知识管理工具，Nexus 值得一看
-
-## 贡献
-
-欢迎提 Issue 和 PR。
+欢迎提 Issue 和 PR！请阅读 [贡献指南](CONTRIBUTING.md) 了解详情。
 
 ```bash
-git clone https://github.com/hyls9527/arcane-codex.git
-cd arcane-codex && npm install
+# 开发流程
+git clone https://github.com/hyls9527/ArcaneCodex.git
+cd ArcaneCodex
+npm install
 npm run tauri dev
 ```
 
-## 名字由来
+## 📜 名字由来
 
-Arcane = 神秘的、隐秘的
-Codex = 古书、法典
+- **Arcane** = 神秘的、隐秘的
+- **Codex** = 古书、法典
 
 你的照片就是你的记忆法典，而记忆是神秘的——有时候你记得拍过某张照片，却怎么也找不到。这个工具帮你解开记忆的封印。
 
-## 许可证
+## 📄 许可证
 
 [MIT License](LICENSE)
 

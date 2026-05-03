@@ -8,10 +8,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
 
 jobs:
-  test:
-    runs-on: windows-latest
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +28,42 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Type check frontend
+      - name: ESLint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rustfmt check
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test
+    runs-on: windows-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript check
         working-directory: frontend
         run: npx tsc --noEmit
 
@@ -40,30 +77,47 @@ jobs:
 
       - name: Cargo check
         working-directory: src-tauri
-        run: cargo check --lib
+        run: cargo check --all-targets
 
-      - name: Cargo audit (security)
+      - name: Cargo test
+        working-directory: src-tauri
+        run: cargo test --lib --all-features
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npx vitest run --pool=forks
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo audit
         working-directory: src-tauri
         run: |
           cargo install cargo-audit --locked
           cargo audit --deny warnings
 
-      - name: Cargo test
-        working-directory: src-tauri
-        run: cargo test --lib
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Frontend unit tests
+      - name: npm audit
         working-directory: frontend
-        run: npx vitest run
-
-      - name: npm audit (security)
-        working-directory: frontend
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        run: npm audit --audit-level=moderate
 
   build:
-    needs: test
+    name: Build
     runs-on: windows-latest
+    needs: [test, security]
     steps:
       - uses: actions/checkout@v4
 
@@ -78,9 +132,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Install Tauri CLI
-        run: npm install --save-dev @tauri-apps/cli
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -89,13 +140,33 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
 
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
       - name: Build Tauri app
         run: npm run tauri -- build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64-bundle
           path: src-tauri/target/release/bundle/*
+          retention-days: 7
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3

@@ -1,13 +1,19 @@
 {
   "name": "arcane-codex",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.0-rc",
   "scripts": {
     "tauri": "tauri",
     "build": "cd frontend && npm run build",
-    "dev": "cd frontend && npm run dev"
+    "dev": "cd frontend && npm run dev",
+    "lint": "cd frontend && npm run lint",
+    "test": "cd frontend && npm run test",
+    "prepare": "husky install"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.10.1"
+    "@tauri-apps/cli": "^2.10.1",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "husky": "^9.0.0"
   }
 }

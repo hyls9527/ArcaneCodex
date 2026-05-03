@@ -1,0 +1,17 @@
+# Clippy 配置 - 强制代码质量
+# 文档: https://rust-lang.github.io/rust-clippy/master/index.html
+
+# 禁止 unwrap() 在生产代码中使用
+disallowed-methods = [
+    { path = "std::option::Option::unwrap", reason = "使用 ? 或 ok_or() 代替" },
+    { path = "std::result::Result::unwrap", reason = "使用 ? 或 map_err() 代替" },
+    { path = "std::option::Option::expect", reason = "使用 ? 或 ok_or() 代替" },
+    { path = "std::result::Result::expect", reason = "使用 ? 或 map_err() 代替" },
+]
+
+# 强制文档
+missing-docs-in-crate-items = true
+
+# 性能优化
+cognitive-complexity-threshold = 25
+type-complexity-threshold = 250

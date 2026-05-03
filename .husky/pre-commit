@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Running pre-commit checks..."
+
+cd frontend && npm run lint
+cd ..
+cd src-tauri && cargo fmt --all -- --check
