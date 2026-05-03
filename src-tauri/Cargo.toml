@@ -32,7 +32,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 kamadak-exif = "0.5"
 
 # 中文分词
-jieba-rs = { version = "0.7", features = ["default"] }
+jieba-rs = { version = "0.9", features = ["default"] }
 
 # 错误处理
 thiserror = "1"
