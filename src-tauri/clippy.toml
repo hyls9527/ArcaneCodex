@@ -9,8 +9,8 @@ disallowed-methods = [
     { path = "std::result::Result::expect", reason = "使用 ? 或 map_err() 代替" },
 ]
 
-# 允许在测试中使用 disallowed methods
-allow-in-tests = true
+# 允许在测试中使用 unwrap 和 expect
+allow-unwrap-in-tests = true
 
 # 强制文档
 missing-docs-in-crate-items = true
