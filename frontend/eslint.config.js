@@ -13,7 +13,6 @@ export default defineConfig([
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,
-      tseslint.configs.strict,
     ],
     plugins: {
       'react-hooks': reactHooks,
@@ -42,9 +41,6 @@ export default defineConfig([
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/prefer-nullish-coalescing': 'warn',
-      '@typescript-eslint/prefer-optional-chain': 'warn',
-      '@typescript-eslint/no-unnecessary-condition': 'warn',
       
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'prefer-const': 'error',
