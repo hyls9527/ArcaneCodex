@@ -3,7 +3,6 @@ import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
-import importPlugin from 'eslint-plugin-import'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
@@ -17,7 +16,6 @@ export default defineConfig([
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
-      'import': importPlugin,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
@@ -25,13 +23,6 @@ export default defineConfig([
         'warn',
         { allowConstantExport: true },
       ],
-      
-      'import/order': ['error', {
-        groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
-        'newlines-between': 'always',
-        alphabetize: { order: 'asc', caseInsensitive: true },
-      }],
-      'import/no-duplicates': 'error',
       
       '@typescript-eslint/no-unused-vars': ['error', { 
         argsIgnorePattern: '^_',
