@@ -555,7 +555,6 @@ pub async fn test_lm_studio_connection(url: String) -> AppResult<bool> {
 }
 
 #[cfg(test)]
-
 mod tests {
 
     use super::*;
@@ -708,7 +707,6 @@ mod tests {
     }
 
     /// Sync version of backup_database for testing without async runtime.
-
     fn backup_database_sync(
         db_path: &std::path::Path,
 
@@ -815,7 +813,6 @@ mod tests {
     }
 
     /// Sync version of restore_database for testing without async runtime.
-
     fn restore_database_sync(
         backup_path: &std::path::Path,
 
@@ -2273,7 +2270,6 @@ mod tests {
     }
 
     #[cfg(test)]
-
     mod tests_corrupted {
 
         use super::*;
