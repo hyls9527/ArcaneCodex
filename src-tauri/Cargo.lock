@@ -134,7 +134,7 @@ dependencies = [
  "mockito",
  "r2d2",
  "r2d2_sqlite",
- "rand 0.9.4",
+ "rand 0.10.1",
  "regex",
  "reqwest 0.12.28",
  "rusqlite",
