@@ -67,7 +67,7 @@ data-encoding = "2"
 # 加密 (API Key 保护)
 aes-gcm = "0.10"
 base64 = "0.22"
-whoami = "1"
+whoami = "2"
 rand = "0.9"
 
 # 系统信息（磁盘空间）
