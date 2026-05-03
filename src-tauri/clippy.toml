@@ -1,13 +1,16 @@
 # Clippy 配置 - 强制代码质量
 # 文档: https://rust-lang.github.io/rust-clippy/master/index.html
 
-# 禁止 unwrap() 在生产代码中使用
+# 禁止 unwrap() 在生产代码中使用（测试代码允许）
 disallowed-methods = [
     { path = "std::option::Option::unwrap", reason = "使用 ? 或 ok_or() 代替" },
     { path = "std::result::Result::unwrap", reason = "使用 ? 或 map_err() 代替" },
     { path = "std::option::Option::expect", reason = "使用 ? 或 ok_or() 代替" },
     { path = "std::result::Result::expect", reason = "使用 ? 或 map_err() 代替" },
 ]
+
+# 允许在测试中使用 disallowed methods
+allow-in-tests = true
 
 # 强制文档
 missing-docs-in-crate-items = true
