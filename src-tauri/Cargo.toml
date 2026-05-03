@@ -59,7 +59,7 @@ async-trait = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # ZIP (备份/恢复)
-zip = "2"
+zip = "8"
 
 # Base64 编码
 data-encoding = "2"
