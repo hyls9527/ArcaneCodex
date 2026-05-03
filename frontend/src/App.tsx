@@ -1,35 +1,28 @@
 import { useEffect, useState, useCallback, Suspense, lazy } from 'react'
 import { useTranslation } from 'react-i18next'
+import { save, open as openDialog } from '@tauri-apps/plugin-dialog'
+
 import { ErrorBoundary } from './components/common/ErrorBoundary'
-import { TopBar } from './components/layout/TopBar'
-import { Sidebar } from './components/layout/Sidebar'
-import { MainLayout } from './components/layout/MainLayout'
-import { useThemeStore } from './stores/useThemeStore'
-import { useConfigStore } from './stores/useConfigStore'
-import type { Theme } from './stores/useThemeStore'
-import { useImageStore } from './stores/useImageStore'
 import { ImageViewer } from './components/gallery/ImageViewer'
 import { ImportProgressBar } from './components/gallery/ImportProgressBar'
+import { MainLayout } from './components/layout/MainLayout'
+import { Sidebar } from './components/layout/Sidebar'
+import { TopBar } from './components/layout/TopBar'
 import i18n from './i18n'
-import { save, open as openDialog } from '@tauri-apps/plugin-dialog'
-import { autoConfigureInference } from './lib/api'
+import { autoConfigureInference, deleteImages, exportData, retrySingleAIResult, archiveImage, safeExport } from './lib/api'
+import { navigate } from './router/events'
+import { useStateRouter } from './router/state-router'
+import { useConfigStore } from './stores/useConfigStore'
+import { useImageStore } from './stores/useImageStore'
+import { useThemeStore } from './stores/useThemeStore'
+import type { Theme } from './stores/useThemeStore'
+import type { AppImage, Toast } from './types/image'
 
-// Lazy-loaded page components (code splitting)
 const GalleryPage = lazy(() => import('./pages/GalleryPage').then(m => ({ default: m.GalleryPage })))
 const AIPage = lazy(() => import('./pages/AIPage').then(m => ({ default: m.AIPage })))
 const DedupPage = lazy(() => import('./pages/DedupPage').then(m => ({ default: m.DedupPage })))
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })))
 const SettingsPage = lazy(() => import('./components/settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
-import {
-  deleteImages,
-  exportData,
-  retrySingleAIResult,
-  archiveImage,
-  safeExport,
-} from './lib/api'
-import type { AppImage, Toast } from './types/image'
-import { useStateRouter } from './router/state-router'
-import { navigate } from './router/events'
 
 function App() {
   const { current: currentPage } = useStateRouter('gallery')
@@ -57,12 +50,10 @@ function App() {
     })
   }, [loadConfigs])
 
-  // Startup: scan local AI services and auto-configure if models are loaded
   useEffect(() => {
     scanAiServices().then((models) => {
       const onlineModel = models.find(m => m.is_online)
       if (onlineModel) {
-        // Auto-configure the first loaded model, or first online model as fallback
         autoConfigureInference().then((result) => {
           if (result) {
             setAiServiceReady(true)

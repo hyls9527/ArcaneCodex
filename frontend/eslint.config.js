@@ -32,7 +32,6 @@ export default defineConfig([
         alphabetize: { order: 'asc', caseInsensitive: true },
       }],
       'import/no-duplicates': 'error',
-      'import/no-unresolved': 'off',
       
       '@typescript-eslint/no-unused-vars': ['error', { 
         argsIgnorePattern: '^_',
@@ -52,11 +51,6 @@ export default defineConfig([
       globals: {
         ...globals.browser,
         ...globals.es2020,
-      },
-    },
-    settings: {
-      'import/resolver': {
-        typescript: {},
       },
     },
   },
