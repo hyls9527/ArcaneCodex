@@ -25,7 +25,7 @@ r2d2_sqlite = "0.24"
 tokio = { version = "1", features = ["full"] }
 
 # HTTP 客户端
-reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
+reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
 
 # 图像处理
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tiff", "gif", "ico", "bmp"] }
