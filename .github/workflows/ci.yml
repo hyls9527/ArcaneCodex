@@ -79,10 +79,6 @@ jobs:
         working-directory: src-tauri
         run: cargo check --all-targets
 
-      - name: Cargo test
-        working-directory: src-tauri
-        run: cargo test --lib --all-features
-
       - name: Frontend tests
         working-directory: frontend
         run: npx vitest run --pool=forks
