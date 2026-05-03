@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 
+           transition-colors duration-200 focus:outline-none focus:ring-2 
+           focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50;
+  }
+  
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 
+           transition-colors duration-200 dark:bg-gray-700 dark:text-gray-200 
+           dark:hover:bg-gray-600 focus:outline-none focus:ring-2 
+           focus:ring-primary-500 focus:ring-offset-2;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+  }
+  
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --border: #e2e8f0;
+}
+
+.dark {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --border: #334155;
+}

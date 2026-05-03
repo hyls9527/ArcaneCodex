@@ -1,0 +1,126 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+dist-ssr/
+target/
+*.exe
+*.dll
+*.so
+*.dylib
+*.msi
+
+# Environment files (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+test-*.txt
+test-*.output
+build-output.txt
+process-icon.js
+
+# Tauri
+src-tauri/gen/
+src-tauri/target/
+
+# Trae IDE internal
+.trae/
+Trae-Ralph/
+
+# Ralph AI workflow state
+RALPH_STATE.md
+
+# Debug
+debug.log
+
+# Sandbox
+*.wsb
+
+# Temporary reports
+*工作报告.md
+
+# Encrypted keys
+.env.keys.json.enc
+
+# Obsidian workspace
+.obsidian/
+
+# Trae instances
+.trae-instances/
+
+# Templates (local)
+Templates/
+
+# API vault standalone project (has own repo)
+api-vault-gui.py
+api-vault.ps1
+启动API保险箱.bat
+思考与深渊.md
+记忆.md
+mi_application_story.md
+click-settings.ps1
+
+# Sandbox test artifacts
+sandbox-results/
+frontend/sandbox-test-design-skills.mjs
+frontend/sandbox-test.mjs
+frontend/sandbox-test-output/
+frontend/test_output.txt
+src-tauri/test_err.txt
+
+# Windows trace files
+*.etl
+sxstrace.txt
+
+# Temporary test directories
+temp_test/
+temp_test_sqlite/
+
+# Python egg-info
+*.egg-info/
+
+# Ralph engine pycache
+ralph-engine/__pycache__/
+ralph-engine/legacy/
+
+# Trae CN CLI (separate)
+trae-cn-cli/
+
+# Scripts (local utilities)
+scripts/

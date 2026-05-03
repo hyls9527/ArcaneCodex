@@ -1,0 +1,11 @@
+{
+  "test_commands": {
+    "rust": "cargo test",
+    "frontend": "npx vitest run"
+  },
+  "test_cwd": {
+    "rust": "src-tauri",
+    "frontend": "frontend"
+  },
+  "test_timeout": 120
+}

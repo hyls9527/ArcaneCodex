@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "ralph-protocol"
+version = "1.0.0"
+description = "Ralph Protocol - Development Discipline Enforcement via MCP"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+]
+
+[project.scripts]
+ralph-server = "ralph_engine.server:main"

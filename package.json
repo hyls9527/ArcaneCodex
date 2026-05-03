@@ -1,0 +1,13 @@
+{
+  "name": "arcane-codex",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "cd frontend && npm run build",
+    "dev": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}

@@ -1,0 +1,5 @@
+[build]
+target-dir = "target"
+rustflags = ["-C", "opt-level=0", "-C", "codegen-units=1"]
+
+[target.x86_64-pc-windows-msvc]
