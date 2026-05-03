@@ -68,6 +68,7 @@ data-encoding = "2"
 aes-gcm = "0.10"
 base64 = "0.22"
 whoami = "1"
+rand = "0.9"
 
 # 系统信息（磁盘空间）
 [target.'cfg(windows)'.dependencies]

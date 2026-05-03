@@ -221,6 +221,147 @@ pub async fn backup_database(db: State<'_, Database>, output_path: String) -> Ap
 }
 
 #[tauri::command]
+pub async fn backup_database_encrypted(
+    db: State<'_, Database>,
+    output_path: String,
+    password: String,
+) -> AppResult<String> {
+    use aes_gcm::{
+        aead::{Aead, KeyInit},
+        Aes256Gcm, Nonce,
+    };
+    use sha2::{Digest, Sha256};
+    use std::io::{Read, Write};
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
+
+    let db_path = db.db_path.clone();
+
+    let mut output_path = std::path::PathBuf::from(&output_path);
+    if output_path.extension().map_or(true, |ext| ext != "enc") {
+        output_path.set_extension("enc");
+    }
+
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::config(format!("Failed to create directory: {}", e)))?;
+    }
+
+    let db_path_clone = db_path.clone();
+    let output_path_clone = output_path.clone();
+    let password_clone = password.clone();
+
+    let result = tokio::task::spawn_blocking(move || -> Result<String, AppError> {
+        if !db_path_clone.exists() {
+            return Err(AppError::config("Database file not found".to_string()));
+        }
+
+        let mut zip_buffer = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut zip_buffer));
+
+            let db_file_name = db_path_clone
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "arcanecodex.db".to_string());
+
+            zip.start_file(&db_file_name, SimpleFileOptions::default())
+                .map_err(|e| AppError::config(format!("Failed to create zip entry: {}", e)))?;
+
+            let mut db_file = std::fs::File::open(&*db_path_clone)
+                .map_err(|e| AppError::config(format!("Failed to open database: {}", e)))?;
+
+            let mut buffer = Vec::new();
+            db_file
+                .read_to_end(&mut buffer)
+                .map_err(|e| AppError::config(format!("Failed to read database: {}", e)))?;
+
+            zip.write_all(&buffer)
+                .map_err(|e| AppError::config(format!("Failed to write to zip: {}", e)))?;
+
+            let wal_path = db_path_clone.with_extension("db-wal");
+            if wal_path.exists() {
+                let wal_name = wal_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "arcanecodex.db-wal".to_string());
+
+                zip.start_file(&wal_name, SimpleFileOptions::default())
+                    .map_err(|e| AppError::config(format!("Failed to create WAL entry: {}", e)))?;
+
+                let mut wal_file = std::fs::File::open(&wal_path)
+                    .map_err(|e| AppError::config(format!("Failed to open WAL file: {}", e)))?;
+
+                let mut wal_buffer = Vec::new();
+                wal_file
+                    .read_to_end(&mut wal_buffer)
+                    .map_err(|e| AppError::config(format!("Failed to read WAL file: {}", e)))?;
+
+                zip.write_all(&wal_buffer)
+                    .map_err(|e| AppError::config(format!("Failed to write WAL to zip: {}", e)))?;
+            }
+
+            let shm_path = db_path_clone.with_extension("db-shm");
+            if shm_path.exists() {
+                let shm_name = shm_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "arcanecodex.db-shm".to_string());
+
+                zip.start_file(&shm_name, SimpleFileOptions::default())
+                    .map_err(|e| AppError::config(format!("Failed to create SHM entry: {}", e)))?;
+
+                let mut shm_file = std::fs::File::open(&shm_path)
+                    .map_err(|e| AppError::config(format!("Failed to open SHM file: {}", e)))?;
+
+                let mut shm_buffer = Vec::new();
+                shm_file
+                    .read_to_end(&mut shm_buffer)
+                    .map_err(|e| AppError::config(format!("Failed to read SHM file: {}", e)))?;
+
+                zip.write_all(&shm_buffer)
+                    .map_err(|e| AppError::config(format!("Failed to write SHM to zip: {}", e)))?;
+            }
+
+            zip.finish()
+                .map_err(|e| AppError::config(format!("Failed to finalize zip: {}", e)))?;
+        }
+
+        let mut hasher = Sha256::new();
+        hasher.update(password_clone.as_bytes());
+        let key_bytes = hasher.finalize();
+        let key = aes_gcm::Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let cipher = Aes256Gcm::new(key);
+
+        let nonce_bytes = rand::random::<[u8; 12]>();
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let encrypted_data = cipher
+            .encrypt(nonce, zip_buffer.as_ref())
+            .map_err(|e| AppError::config(format!("Encryption failed: {}", e)))?;
+
+        let mut output_file = std::fs::File::create(&output_path_clone)
+            .map_err(|e| AppError::config(format!("Failed to create encrypted file: {}", e)))?;
+
+        output_file
+            .write_all(&nonce_bytes)
+            .map_err(|e| AppError::config(format!("Failed to write nonce: {}", e)))?;
+
+        output_file
+            .write_all(&encrypted_data)
+            .map_err(|e| AppError::config(format!("Failed to write encrypted data: {}", e)))?;
+
+        Ok(output_path_clone.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| AppError::config(format!("Backup task failed: {}", e)))??;
+
+    info!("Encrypted backup completed: {:?}", result);
+
+    Ok(result)
+}
+
+#[tauri::command]
 
 pub async fn restore_database(db: State<'_, Database>, backup_path: String) -> AppResult<()> {
     use std::io::{Read, Write};
@@ -523,6 +664,166 @@ pub async fn restore_database(db: State<'_, Database>, backup_path: String) -> A
     .map_err(|e| AppError::config(format!("Failed to restore database: {}", e)))??;
 
     info!("Database restore completed: {}", backup_path);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn restore_database_encrypted(
+    db: State<'_, Database>,
+    backup_path: String,
+    password: String,
+) -> AppResult<()> {
+    use aes_gcm::{
+        aead::{Aead, KeyInit},
+        Aes256Gcm, Nonce,
+    };
+    use sha2::{Digest, Sha256};
+    use std::io::{Read, Write};
+    use zip::ZipArchive;
+
+    let db_path = db.db_path.clone();
+    let backup_path_buf = std::path::PathBuf::from(&backup_path);
+    let password_clone = password.clone();
+
+    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+        if !backup_path_buf.exists() {
+            return Err(AppError::config("Backup file not found".to_string()));
+        }
+
+        let mut encrypted_file = std::fs::File::open(&backup_path_buf)
+            .map_err(|e| AppError::config(format!("Failed to open encrypted backup: {}", e)))?;
+
+        let mut nonce_bytes = [0u8; 12];
+        encrypted_file
+            .read_exact(&mut nonce_bytes)
+            .map_err(|e| AppError::config(format!("Failed to read nonce: {}", e)))?;
+
+        let mut encrypted_data = Vec::new();
+        encrypted_file
+            .read_to_end(&mut encrypted_data)
+            .map_err(|e| AppError::config(format!("Failed to read encrypted data: {}", e)))?;
+
+        let mut hasher = Sha256::new();
+        hasher.update(password_clone.as_bytes());
+        let key_bytes = hasher.finalize();
+        let key = aes_gcm::Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let decrypted_data = cipher
+            .decrypt(nonce, encrypted_data.as_ref())
+            .map_err(|_| AppError::config("Decryption failed. Invalid password or corrupted file.".to_string()))?;
+
+        let cursor = std::io::Cursor::new(decrypted_data);
+        let mut archive = ZipArchive::new(cursor)
+            .map_err(|e| AppError::config(format!("Failed to read zip archive: {}", e)))?;
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "arcanecodex_restore_enc_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        ));
+
+        std::fs::create_dir_all(&temp_dir)
+            .map_err(|e| AppError::config(format!("Failed to create temp directory: {}", e)))?;
+
+        for i in 0..archive.len() {
+            let mut file = archive
+                .by_index(i)
+                .map_err(|e| AppError::config(format!("Failed to read zip entry: {}", e)))?;
+
+            let entry_name = file.name();
+
+            if entry_name.contains("..") || entry_name.contains('\\') {
+                warn!("Suspicious zip entry blocked: {}", entry_name);
+                continue;
+            }
+
+            let outpath = temp_dir.join(entry_name);
+
+            if let Ok(canonical_out) = outpath.canonicalize() {
+                if !canonical_out.starts_with(&temp_dir) {
+                    warn!("Zip Slip attempt blocked: {}", entry_name);
+                    continue;
+                }
+            } else {
+                if let Some(p) = outpath.parent() {
+                    if !p.exists() {
+                        std::fs::create_dir_all(p)
+                            .map_err(|e| AppError::config(format!("Failed to create directory: {}", e)))?;
+                    }
+                }
+            }
+
+            let mut outfile = std::fs::File::create(&outpath)
+                .map_err(|e| AppError::config(format!("Failed to create file: {}", e)))?;
+
+            std::io::copy(&mut file, &mut outfile)
+                .map_err(|e| AppError::config(format!("Failed to write file: {}", e)))?;
+        }
+
+        let db_path_clone = db_path.clone();
+
+        let target_db = db_path_clone.clone();
+        let target_wal = db_path_clone.with_extension("db-wal");
+        let target_shm = db_path_clone.with_extension("db-shm");
+
+        if target_db.exists() {
+            std::fs::remove_file(&target_db)
+                .map_err(|e| AppError::config(format!("Failed to remove old database: {}", e)))?;
+        }
+
+        let source_db = temp_dir.join(
+            db_path_clone
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "arcanecodex.db".to_string()),
+        );
+
+        if source_db.exists() {
+            std::fs::copy(&source_db, &target_db)
+                .map_err(|e| AppError::config(format!("Failed to restore database: {}", e)))?;
+        }
+
+        let source_wal = temp_dir.join(
+            target_wal
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "arcanecodex.db-wal".to_string()),
+        );
+
+        if source_wal.exists() {
+            std::fs::copy(&source_wal, &target_wal)
+                .map_err(|e| AppError::config(format!("Failed to restore WAL file: {}", e)))?;
+        } else if target_wal.exists() {
+            let _ = std::fs::remove_file(&target_wal);
+        }
+
+        let source_shm = temp_dir.join(
+            target_shm
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "arcanecodex.db-shm".to_string()),
+        );
+
+        if source_shm.exists() {
+            std::fs::copy(&source_shm, &target_shm)
+                .map_err(|e| AppError::config(format!("Failed to restore SHM file: {}", e)))?;
+        } else if target_shm.exists() {
+            let _ = std::fs::remove_file(&target_shm);
+        }
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::config(format!("Restore task failed: {}", e)))??;
+
+    info!("Encrypted database restore completed: {}", backup_path);
 
     Ok(())
 }
