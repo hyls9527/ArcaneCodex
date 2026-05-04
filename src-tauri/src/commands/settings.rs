@@ -777,7 +777,7 @@ pub async fn restore_database_encrypted(
         let target_shm = db_path_clone.with_extension("db-shm");
 
         if target_db.exists() {
-            std::fs::remove_file(&target_db)
+            std::fs::remove_file(&*target_db)
                 .map_err(|e| AppError::config(format!("Failed to remove old database: {}", e)))?;
         }
 
@@ -789,7 +789,7 @@ pub async fn restore_database_encrypted(
         );
 
         if source_db.exists() {
-            std::fs::copy(&source_db, &target_db)
+            std::fs::copy(&source_db, &*target_db)
                 .map_err(|e| AppError::config(format!("Failed to restore database: {}", e)))?;
         }
 

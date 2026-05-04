@@ -74,6 +74,10 @@ fn main() {
             commands::batch_ops::get_log_stats,
             commands::batch_ops::export_logs,
             commands::batch_ops::clear_logs,
+            commands::xmp::read_xmp_metadata,
+            commands::xmp::write_xmp_metadata,
+            commands::xmp::generate_xmp_sidecar,
+            commands::xmp::export_as_xmp,
             commands::seed_data::check_sample_data,
             commands::seed_data::clear_sample_data,
         ])

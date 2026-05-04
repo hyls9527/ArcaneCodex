@@ -12,3 +12,4 @@ pub mod search;
 pub mod seed_data;
 pub mod settings;
 pub mod tag_correction;
+pub mod xmp;

@@ -9,3 +9,4 @@ pub mod image;
 pub mod inference;
 pub mod lm_studio;
 pub mod search_index;
+pub mod xmp_service;

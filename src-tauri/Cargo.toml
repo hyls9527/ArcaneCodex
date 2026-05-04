@@ -70,6 +70,13 @@ base64 = "0.22"
 whoami = "1"
 rand = "0.9"
 
+# XMP 元数据互操作
+xmpkit = "0.1"
+xmp-writer = "0.3"
+
+# 文件监控
+notify = { version = "7", features = ["macos_kqueue"] }
+
 # 系统信息（磁盘空间）
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winnt"] }
