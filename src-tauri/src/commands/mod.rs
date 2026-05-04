@@ -5,6 +5,7 @@ pub mod batch_ops;
 pub mod dedup;
 pub mod error_patterns;
 pub mod export;
+pub mod file_monitor;
 pub mod images;
 pub mod inference_settings;
 pub mod narrative;

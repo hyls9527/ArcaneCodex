@@ -13,6 +13,7 @@ mod utils;
 
 use std::sync::Arc;
 use tauri::Manager;
+use crate::core::file_watcher::FileWatcherService;
 
 fn main() {
     // 初始化日志系统
@@ -80,8 +81,16 @@ fn main() {
             commands::xmp::export_as_xmp,
             commands::seed_data::check_sample_data,
             commands::seed_data::clear_sample_data,
+            commands::file_monitor::start_file_monitor,
+            commands::file_monitor::stop_file_monitor,
+            commands::file_monitor::get_monitor_status,
         ])
         .setup(|app| {
+            let (tx, _rx) = tokio::sync::broadcast::channel(256);
+            app.manage(commands::file_monitor::MonitorState {
+                service: Arc::new(std::sync::Mutex::new(FileWatcherService::new(tx))),
+            });
+
             let app_handle = app.handle();
             let db = core::db::Database::new(app_handle).map_err(|e| {
                 tauri::Error::Io(std::io::Error::new(

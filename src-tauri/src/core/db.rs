@@ -121,6 +121,16 @@ impl Database {
         }
 
         let conn = self.open_connection()?;
+        let user_version_after_v6: i32 =
+            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        drop(conn);
+
+        if user_version_after_v6 < 7 {
+            info!("Applying migration v7: xmp sidecars support");
+            self.apply_v7_xmp_sidecars()?;
+        }
+
+        let conn = self.open_connection()?;
         let final_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
         info!("Database is up to date (version {})", final_version);
 
@@ -399,10 +409,34 @@ impl Database {
             "
             INSERT OR IGNORE INTO settings (key, value)
                 SELECT key, value FROM app_config;
-            
+
             DROP TABLE IF EXISTS app_config;
-            
+
             PRAGMA user_version = 6;
+        ",
+        )?;
+        Ok(())
+    }
+
+    fn apply_v7_xmp_sidecars(&self) -> Result<()> {
+        let conn = self.open_connection()?;
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS xmp_sidecars (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+                sidecar_path TEXT UNIQUE NOT NULL,
+                last_synced_at DATETIME,
+                is_dirty INTEGER NOT NULL DEFAULT 0,
+                hash TEXT,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_xmp_sidecars_image_id ON xmp_sidecars(image_id);
+            CREATE INDEX IF NOT EXISTS idx_xmp_sidecars_dirty ON xmp_sidecars(is_dirty);
+
+            PRAGMA user_version = 7;
         ",
         )?;
         Ok(())
