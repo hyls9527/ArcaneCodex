@@ -25,7 +25,7 @@ export function SampleDataBanner({ onCleared }: SampleDataBannerProps) {
   const handleClear = useCallback(async () => {
     setClearing(true)
     try {
-      const count = await clearSampleData()
+      await clearSampleData()
       setVisible(false)
       onCleared()
     } catch {

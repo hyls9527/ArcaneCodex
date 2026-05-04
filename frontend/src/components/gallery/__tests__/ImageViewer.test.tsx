@@ -46,7 +46,7 @@ vi.mock('react-i18next', () => ({
   },
 }))
 
-vi.mock('framer-motion', () => {
+vi.mock('motion/react', () => {
   const MOTION_PROPS = new Set([
     'initial', 'animate', 'exit', 'transition', 'whileHover', 'whileTap',
     'whileFocus', 'whileDrag', 'whileInView', 'layout', 'drag', 'dragConstraints',

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Search, Trash2, Check, ArrowRight } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'motion/react'
 import type { DuplicateGroup } from '@/lib/api'
 
 interface DedupManagerProps {

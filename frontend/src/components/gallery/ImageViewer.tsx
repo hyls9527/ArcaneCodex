@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, ZoomIn, ZoomOut, RotateCw, Download, Trash2, Camera, Clock, MapPin, Tag, Archive, RefreshCw, Info } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'motion/react'
 import { cn } from '@/utils/cn'
 import { NarrativePrompt } from './NarrativePrompt'
 import { getNarratives, writeNarrative } from '@/lib/api'

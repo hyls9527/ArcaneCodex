@@ -20,15 +20,12 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     minify: 'esbuild',
-    esbuild: {
-      drop: ['console'],
-    },
     rollupOptions: {
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
           'vendor-state': ['zustand'],
-          'vendor-ui': ['framer-motion', 'clsx', 'lucide-react'],
+          'vendor-ui': ['motion', 'clsx', 'lucide-react'],
           'vendor-i18n': ['i18next', 'react-i18next'],
           'vendor-virtual': ['@tanstack/react-virtual'],
           'vendor-dropzone': ['react-dropzone'],

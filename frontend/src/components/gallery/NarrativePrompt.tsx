@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { Send, MessageCircle, X, User, MapPin, Clock } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'motion/react'
 import { cn } from '@/utils/cn'
 import { type Narrative } from '@/lib/api'
 

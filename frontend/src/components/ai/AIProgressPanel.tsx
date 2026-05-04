@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Play, Pause, RotateCcw, AlertCircle, CheckCircle, XCircle, Clock } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'motion/react'
 import { listen } from '@tauri-apps/api/event'
 import { type AIResult, getRecentAIResults, retrySingleAIResult } from '@/lib/api'
 

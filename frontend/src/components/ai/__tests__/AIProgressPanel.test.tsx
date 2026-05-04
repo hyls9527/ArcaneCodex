@@ -54,7 +54,7 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-vi.mock('framer-motion', () => {
+vi.mock('motion/react', () => {
   const stripMotionProps = (props: Record<string, unknown>): Record<string, unknown> => {
     const result: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(props)) {

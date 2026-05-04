@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/utils/cn'
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import { FileImage } from 'lucide-react'
 
 interface ImageCardProps {
