@@ -585,3 +585,53 @@ export async function checkSampleData(): Promise<SampleDataStatus> {
 export async function clearSampleData(): Promise<number> {
   return invoke<number>('clear_sample_data')
 }
+
+// === XMP Metadata API ===
+
+export interface XmpMetadata {
+  creator?: string
+  title?: string
+  description?: string
+  subject?: string[]
+  keywords?: string[]
+  rating?: number
+}
+
+export async function readXmpMetadata(filePath: string): Promise<XmpMetadata | null> {
+  try {
+    return invoke<XmpMetadata | null>('read_xmp_metadata', { filePath })
+  } catch {
+    return null
+  }
+}
+
+export async function writeXmpMetadata(filePath: string, metadata: XmpMetadata): Promise<void> {
+  return invoke('write_xmp_metadata', { filePath, metadata })
+}
+
+export async function generateXmpSidecar(imagePath: string, metadata: XmpMetadata): Promise<string> {
+  return invoke<string>('generate_xmp_sidecar', { imagePath, metadata })
+}
+
+export async function exportAsXmp(imageIds: number[]): Promise<string[]> {
+  return invoke<string[]>('export_as_xmp', { imageIds })
+}
+
+// === File Monitor API ===
+
+export interface MonitorStatus {
+  is_running: boolean
+  watched_directories: number
+}
+
+export async function startFileMonitor(directory: string): Promise<void> {
+  return invoke('start_file_monitor', { directory })
+}
+
+export async function stopFileMonitor(): Promise<void> {
+  return invoke('stop_file_monitor')
+}
+
+export async function getMonitorStatus(): Promise<MonitorStatus> {
+  return invoke<MonitorStatus>('get_monitor_status')
+}
