@@ -199,10 +199,22 @@ export function ImageCard({
       )}
       
       {/* AI Status Indicator */}
-      <div className={cn(
-        'absolute top-2 right-2 w-2.5 h-2.5 rounded-full',
-        statusColors[aiStatus]
-      )} />
+      <div className="absolute top-2 right-2 flex items-center gap-1">
+        <div className={cn(
+          'w-2.5 h-2.5 rounded-full ring-2 ring-white/80 dark:ring-gray-900/80',
+          statusColors[aiStatus]
+        )} />
+        {aiStatus === 'processing' && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/90 text-white font-medium backdrop-blur-sm">
+            AI
+          </span>
+        )}
+        {aiStatus === 'failed' && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/90 text-white font-medium backdrop-blur-sm">
+            !
+          </span>
+        )}
+      </div>
       
       {/* Selection Overlay */}
       {isSelected && (

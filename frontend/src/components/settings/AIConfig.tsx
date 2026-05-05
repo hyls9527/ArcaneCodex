@@ -43,6 +43,7 @@ export function AIConfig({ onChange }: { onChange?: () => void }) {
   const [apiKey, setApiKey] = useState('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
+  const [testDetail, setTestDetail] = useState<string>('')
   const [discovering, setDiscovering] = useState(false)
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([])
   const [discoverError, setDiscoverError] = useState<string | null>(null)
@@ -97,14 +98,17 @@ export function AIConfig({ onChange }: { onChange?: () => void }) {
 
     setTesting(true)
     setTestResult(null)
+    setTestDetail('')
     setUrlValidationError(null)
 
     try {
       await invoke('set_inference_provider', { provider, model, apiKey: apiKey || null })
-      await invoke<string>('test_inference_connection')
+      const detail = await invoke<string>('test_inference_connection')
       setTestResult('success')
-    } catch {
+      setTestDetail(detail)
+    } catch (err: any) {
       setTestResult('error')
+      setTestDetail(err?.toString?.() || '')
     } finally {
       setTesting(false)
     }
@@ -256,12 +260,24 @@ export function AIConfig({ onChange }: { onChange?: () => void }) {
 
         {/* Test Result */}
         {testResult && (
-          <p className={cn(
-            'text-sm',
-            testResult === 'success' ? 'text-green-600' : 'text-red-600'
+          <div className={cn(
+            'rounded-lg p-3 text-sm border',
+            testResult === 'success'
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
+              : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
           )}>
-            {testResult === 'success' ? t('settings.ai.connectionSuccess') : t('settings.ai.connectionFailed')}
-          </p>
+            <div className="flex items-center gap-2 font-medium mb-1">
+              {testResult === 'success' ? (
+                <CheckCircle className="w-4 h-4 text-green-500" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-500" />
+              )}
+              {testResult === 'success' ? t('settings.ai.connectionSuccess') : t('settings.ai.connectionFailed')}
+            </div>
+            {testDetail && (
+              <pre className="text-xs whitespace-pre-wrap mt-1 opacity-80 leading-relaxed">{testDetail}</pre>
+            )}
+          </div>
         )}
 
         {/* Discover Models */}

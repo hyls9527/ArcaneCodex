@@ -66,25 +66,41 @@ export function Sidebar({ currentPage }: SidebarProps) {
         </button>
       </div>
       
-      <nav className="flex-1 p-2">
-        {navItems.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => handleNavigate(id)}
-            aria-label={label}
-            data-testid={`nav-${id}`}
-            className={cn(
-              'flex items-center w-full gap-3 px-3 py-2 rounded-lg transition-colors',
-              'hover:bg-gray-100 dark:hover:bg-gray-700',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-dark-100',
-              currentPage === id && 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400',
-              collapsed && 'justify-center'
-            )}
-          >
-            <Icon className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && <span>{label}</span>}
-          </button>
-        ))}
+      <nav className="flex-1 p-2 space-y-1">
+        {navItems.map(({ id, label, icon: Icon }) => {
+          const isActive = currentPage === id
+          return (
+            <button
+              key={id}
+              onClick={() => handleNavigate(id)}
+              aria-label={label}
+              data-testid={`nav-${id}`}
+              className={cn(
+                'group relative flex items-center w-full gap-3 px-3 py-2.5 rounded-xl transition-all duration-200',
+                'hover:bg-gray-100 dark:hover:bg-gray-700',
+                'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-dark-100',
+                isActive && 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium shadow-sm',
+                collapsed && 'justify-center'
+              )}
+            >
+              {/* Active indicator bar */}
+              {isActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-primary-500" />
+              )}
+              <Icon className={cn(
+                'w-5 h-5 flex-shrink-0 transition-transform duration-200',
+                isActive && 'scale-110'
+              )} />
+              {!collapsed && <span>{label}</span>}
+              {/* Collapsed tooltip */}
+              {collapsed && (
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 shadow-lg">
+                  {label}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </nav>
     </aside>
   )

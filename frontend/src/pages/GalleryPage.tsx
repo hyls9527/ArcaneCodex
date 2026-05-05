@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, AlertCircle, Search, Link2, ImagePlus, CheckSquare, Trash2, X, Square, FolderOpen, FileImage, Database } from 'lucide-react'
+import { Loader2, AlertCircle, Search, Link2, ImagePlus, CheckSquare, Trash2, X, Square, FolderOpen, FileImage, Database, Sparkles } from 'lucide-react'
 import { ImageGrid } from '../components/gallery/ImageGrid'
 import { ImageFilter } from '../components/gallery/ImageFilter'
 import { DropZone } from '../components/gallery/DropZone'
@@ -341,27 +341,32 @@ export function GalleryPage({
         <div className="h-[calc(100%-200px)]">
           {images.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-6 px-8">
-              <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-dark-200 flex items-center justify-center">
-                <ImagePlus className="w-12 h-12 text-gray-300 dark:text-gray-600" />
+              <div className="relative">
+                <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-primary-100 to-primary-200 dark:from-primary-900/30 dark:to-primary-800/20 flex items-center justify-center shadow-lg">
+                  <ImagePlus className="w-14 h-14 text-primary-500 dark:text-primary-400" />
+                </div>
+                <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-xl bg-white dark:bg-dark-100 shadow-md flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-amber-500" />
+                </div>
               </div>
               <div className="text-center max-w-md">
-                <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
                   {t('gallery.emptyTitle')}
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
                   {t('gallery.emptyDescription')}
                 </p>
-                <div className="flex items-center justify-center gap-3 mb-6">
+                <div className="flex items-center justify-center gap-3 mb-6 flex-wrap">
                   <button
                     onClick={handleSelectFiles}
-                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white transition-colors"
+                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-xl bg-primary-600 hover:bg-primary-700 text-white transition-all shadow-sm hover:shadow-md active:scale-95"
                   >
                     <FileImage className="w-4 h-4" />
                     {t('import.selectFiles')}
                   </button>
                   <button
                     onClick={handleSelectFolder}
-                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-dark-200 transition-colors"
+                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-dark-200 transition-all active:scale-95"
                   >
                     <FolderOpen className="w-4 h-4" />
                     {t('import.selectFolder')}
@@ -377,16 +382,16 @@ export function GalleryPage({
                         addToast(t('errors.loadSampleDataFailed'), 'error')
                       }
                     }}
-                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg border border-primary-300 dark:border-primary-700 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-xl border border-primary-300 dark:border-primary-700 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all active:scale-95"
                   >
                     <Database className="w-4 h-4" />
                     {t('gallery.loadSampleData')}
                   </button>
                 </div>
-                <div className="flex flex-col gap-3 text-left bg-gray-50 dark:bg-dark-200 rounded-lg p-4">
+                <div className="flex flex-col gap-3 text-left bg-gray-50 dark:bg-dark-200/50 rounded-xl p-4 border border-gray-100 dark:border-gray-700/50">
                   <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mt-0.5">
-                      <span className="text-xs font-bold text-primary-600 dark:text-primary-400">1</span>
+                    <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary-500 text-white flex items-center justify-center text-xs font-bold mt-0.5 shadow-sm">
+                      1
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -398,8 +403,8 @@ export function GalleryPage({
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mt-0.5">
-                      <span className="text-xs font-bold text-primary-600 dark:text-primary-400">2</span>
+                    <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary-500 text-white flex items-center justify-center text-xs font-bold mt-0.5 shadow-sm">
+                      2
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -411,8 +416,8 @@ export function GalleryPage({
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mt-0.5">
-                      <span className="text-xs font-bold text-primary-600 dark:text-primary-400">3</span>
+                    <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary-500 text-white flex items-center justify-center text-xs font-bold mt-0.5 shadow-sm">
+                      3
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
