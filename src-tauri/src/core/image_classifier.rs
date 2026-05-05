@@ -1,0 +1,439 @@
+use image::DynamicImage;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+use crate::core::onnx_runtime::{ModelType, OnnxRuntimeManager};
+
+pub const IMAGENET_CLASSES: &[&str] = &[
+    "tench", "goldfish", "great_white_shark", "tiger_shark", "hammerhead",
+    "electric_ray", "stingray", "cock", "hen", "ostrich", "brambling",
+    "goldfinch", "house_finch", "junco", "indigo_bunting", "robin",
+    "bulbul", "jay", "magpie", "chickadee", "water_ouzel", "kite",
+    "bald_eagle", "vulture", "great_grey_owl", "European_fire_salamander",
+    "common_newt", "eft", "spotted_salamander", "axolotl", "bullfrog",
+    "tree_frog", "tailed_frog", "loggerhead", "leatherback_turtle",
+    "mud_turtle", "terrapin", "box_turtle", "banded_gecko", "common_iguana",
+    "American_chameleon", "whiptail", "agama", "frilled_lizard", "alligator_lizard",
+    "Gila_monster", "green_lizard", "African_chameleon", "Komodo_dragon",
+    "African_crocodile", "American_alligator", "triceratops",
+    "thunder_snake", "ringneck_snake", "hognose_snake", "green_snake",
+    "king_snake", "garter_snake", "water_snake", "vine_snake", "night_snake",
+    "boa_constrictor", "rock_python", "Indian_cobra", "green_mamba",
+    "sea_snake", "horned_viper", "diamondback", "sidewinder", "trilobite",
+    "harvestman", "scorpion", "black_and_gold_garden_spider", "barn_spider",
+    "garden_spider", "black_widow", "tarantula", "wolf_spider", "tick",
+    "centipede", "isopod", "white_stomatopod", "crayfish", "rock_crab",
+    "fiddler_crab", "king_crab", "American_lobster", "isopod", "dung_beetle",
+    "rhinoceros_beetle", "weevil", "fly", "bee", "ant", "grasshopper",
+    "cricket", "walking_stick", "cockroach", "mantis", "cicada", "leafhopper",
+    "lacewing", "dragonfly", "damselfly", "admiral_butterfly",
+    "ringlet_butterfly", "monarch_butterfly", "cabbage_butterfly",
+    "sulphur_butterfly", "lycaenid_butterfly", "starfish", "sea_urchin",
+    "sea_cucumber", "wood_rabbit", "hare", "Angora_rabbit", "hamster",
+    "porcupine", "fox_squirrel", "marmot", "beaver", "guinea_pig",
+    "sorrel", "hare", "Arctic_fox", "red_fox", "cat_dog", "wolf",
+    "coyote", "jackal", "dingo", "African_hunting_dog", "hyena",
+    "wild_dog", "red_fox", "bear", "American_black_bear", "ice_bear",
+    "sloth_bear", "mongoose", "badger", "civet", "hyena", "zebra",
+    "hog", "wild_boar", "warthog", "hippopotamus", "ox", "water_buffalo",
+    "bison", "ram", "bighorn", "ibex", "hartebeest", "impala",
+    "gazelle", "Arabian_camel", "llama", "weasel", "mink", "polecat",
+    "black-footed_ferret", "otter", "skunk", "badger", "marmot",
+    "baboon", "macaque", "langur", "colobus", "proboscis_monkey",
+    "marmoset", "capuchin", "howler_monkey", "titi", "spider_monkey",
+    "squirrel_monkey", "Madagascar_cat", "lemur", "tarsier", "slow_loris",
+    "gorilla", "chimpanzee", "orangutan", "gibbon", "siamang",
+    "guenon", "patas_monkey", "talapoin", "white-headed_capuchin",
+    "black_howler", "Uakari", "titian_monkey", "pilot_whale", "beluga",
+    "narwhal", "killer_whale", "dugong", "sea_lion", "fur_seal",
+    "elephant_seal", "barnacle_goose", "goose", "swan", "tusker",
+    "echidna", "platypus", "wallaby", "koala", "wombat", "jellyfish",
+    "sea_anemone", "brain_coral", "flatworm", "nematode", "conch",
+    "snail", "slug", "sea_slug", "chiton", "chambered_nautilus",
+    "Dungeness_crab", "rock_crab", "fiddler_crab", "king_crab",
+    "American_lobster", "isopod", "centipede", "isopod", "oribatid_mite",
+    "starfish", "sea_urchin", "sea_cucumber", "rabbit", "hare",
+    "Angora_rabbit", "hamster", "porcupine", "fox_squirrel", "marmot",
+    "beaver", "guinea_pig", "sorrel", "hare", "Arctic_fox", "red_fox",
+    "cat_dog", "wolf", "coyote", "jackal", "dingo", "African_hunting_dog",
+    "hyena", "wild_dog", "red_fox", "bear", "American_black_bear",
+    "ice_bear", "sloth_bear", "mongoose", "badger", "civet", "hyena",
+    "zebra", "hog", "wild_boar", "warthog", "hippopotamus", "ox",
+    "water_buffalo", "bison", "ram", "bighorn", "ibex", "hartebeest",
+    "impala", "gazelle", "Arabian_camel", "llama", "weasel", "mink",
+    "polecat", "black-footed_ferret", "otter", "skunk", "badger",
+    "marmot", "baboon", "macaque", "langur", "colobus", "proboscis_monkey",
+    "marmoset", "capuchin", "howler_monkey", "titi", "spider_monkey",
+    "squirrel_monkey", "Madagascar_cat", "lemur", "tarsier", "slow_loris",
+    "gorilla", "chimpanzee", "orangutan", "gibbon", "siamang",
+    "guenon", "patas_monkey", "talapoin", "white-headed_capuchin",
+    "black_howler", "Uakari", "titian_monkey", "pilot_whale", "beluga",
+    "narwhal", "killer_whale", "dugong", "sea_lion", "fur_seal",
+    "elephant_seal", "barnacle_goose", "goose", "swan", "tusker",
+    "echidna", "platypus", "wallaby", "koala", "wombat", "jellyfish",
+    "sea_anemone", "brain_coral", "flatworm", "nematode", "conch",
+    "snail", "slug", "sea_slug", "chiton", "chambered_nautilus",
+    "Dungeness_crab", "rock_crab", "fiddler_crab", "king_crab",
+    "American_lobster", "isopod", "centipede", "isopod", "oribatid_mite",
+    "starfish", "sea_urchin", "sea_cucumber", "agaric", "gyromitra",
+    "stinkhorn", "corn_lily", "earthstar", "hen_of_the_woods", "bolete",
+    "ear", "shelf_fungus", "toadstool", "mushroom", "blackberry",
+    "acorn", "strawberry", "orange", "lemon", "fig", "pineapple",
+    "banana", "jackfruit", "custard_apple", "pomegranate", "hay",
+    "carbonara", "hot_pot", "trifle", "carrot_cake", "dumbbell",
+    "academic_gown", "bow_tie", "bonnet", "monokini", "cloak",
+    "diaper", "apron", "choker", "wig", "slipper", "velvet",
+    "wallet", "handbag", "barrel", "crate", "candle", "manhole_cover",
+    "padlock", "revolver", "rifle", "cannon", "projectile", "tank",
+    "toyshop", "slide_rule", "maraca", "pan_pipe", "bagpipe",
+    "organ", "harp", "banjo", "balloon", "ballpoint", "grand_piano",
+    "upright", "drum", "acoustic_guitar", "bell_cote", "telescope",
+    "microphone", "electric_fan", "vacuum", "barrel", "chest",
+    "washing_machine", "cellular_telephone", "dial_telephone", "switch",
+    "radio_television", "digital_clock", "blackboard", "bookcase",
+    "file_cabinet", "cinema", "library", "grocery_store", "altar",
+    "mosque", "butcher_shop", "classroom", "restaurant_by_the_water",
+    "tower", "lighthouse", "castle", "bridge", "boathouse", "confectionery",
+    "bakery", "toyshop", "cafeteria", "prison", "restaurant",
+    "water_tower", "gasometer", "space_shuttle", "throne", "garbage_truck",
+    "seashore", "valley", "volcano", "promontory", "beach", "cliff",
+    "lakeside", "sidewalk", "street", "runway", "pier", "sandbar",
+    "valley", "ravine", "peninsula", "plain", "field", "desert",
+    "rainforest", "mountain", "canyon", "reef", "geyser", "lighthouse",
+    "cab", "convertible", "jeep", "minivan", "sports_car", "school_bus",
+    "minibus", "police_van", "ambulance", "passenger_car", "limousine",
+    "chariot", "snowplow", "fire_engine", " garbage_truck", "tow_truck",
+    "forklift", "mountain_bike", "freight_car", "locomotive",
+    "rowboat", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier",
+    "liner", "submarine", "speedboat", "lifeboat", "buoy", "canoe",
+    "aircraft_carrier", "liner", "submarine", "speedboat", "lifeboat",
+    "buoy", "canoe", "aircraft_carrier", "liner", "submarine",
+    "speedboat", "lifeboat", "buoy", "canoe", "aircraft_carrier", "liner",
+    "submarine", "speedboat", "lifeboat", "buoy", "canoe", "aircraft_arri
+"];
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageClassificationResult {
+    pub label: String,
+    pub confidence: f32,
+    pub top_n_predictions: Vec<ClassPrediction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassPrediction {
+    pub class_name: String,
+    pub confidence: f32,
+}
+
+#[derive(Debug)]
+pub enum ClassificationError {
+    ModelNotLoaded,
+    ImageProcessingFailed(String),
+    InferenceError(String),
+}
+
+impl std::fmt::Display for ClassificationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClassificationError::ModelNotLoaded => write!(f, "图像分类模型未加载"),
+            ClassificationError::ImageProcessingFailed(msg) => {
+                write!(f, "图像处理失败: {}", msg)
+            }
+            ClassificationError::InferenceError(msg) => write!(f, "推理错误: {}", msg),
+        }
+    }
+}
+
+impl From<image::ImageError> for ClassificationError {
+    fn from(e: image::ImageError) -> Self {
+        ClassificationError::ImageProcessingFailed(e.to_string())
+    }
+}
+
+pub type ClassifyResult<T> = std::result::Result<T, ClassificationError>;
+
+pub struct ImageClassifier {
+    runtime_manager: Arc<OnnxRuntimeManager>,
+}
+
+impl ImageClassifier {
+    pub fn new(runtime_manager: Arc<OnnxRuntimeManager>) -> Self {
+        tracing::info!("初始化图像分类器");
+        Self { runtime_manager }
+    }
+
+    pub async fn classify_image(
+        &self,
+        image_path: &std::path::Path,
+        top_n: usize,
+    ) -> ClassifyResult<ImageClassificationResult> {
+        if !self.runtime_manager.is_model_loaded(ModelType::ImageClassification).await {
+            return Err(ClassificationError::ModelNotLoaded);
+        }
+
+        let img = image::open(image_path)?;
+        let input_data = Self::preprocess_image(&img)?;
+
+        let result = self
+            .runtime_manager
+            .run_inference(
+                ModelType::ImageClassification,
+                &input_data,
+                vec![1, 3, 224, 224],
+            )
+            .await
+            .map_err(|e| ClassificationError::InferenceError(e.to_string()))?;
+
+        let predictions = Self::extract_top_n_predictions(
+            &result.outputs,
+            top_n,
+        );
+
+        Ok(ImageClassificationResult {
+            label: if !predictions.is_empty() {
+                predictions[0].class_name.clone()
+            } else {
+                String::from("unknown")
+            },
+            confidence: if !predictions.is_empty() {
+                predictions[0].confidence
+            } else {
+                0.0
+            },
+            top_n_predictions: predictions,
+        })
+    }
+
+    #[allow(dead_code)]
+    pub async fn batch_classify(
+        &self,
+        image_paths: &[&std::path::Path],
+        top_n: usize,
+    ) -> Vec<(String, ClassifyResult<ImageClassificationResult>)> {
+        let mut results = Vec::new();
+
+        for path in image_paths {
+            let path_str = path.to_string_lossy().to_string();
+            let result = self.classify_image(path, top_n).await;
+            results.push((path_str, result));
+        }
+
+        results
+    }
+
+    fn preprocess_image(img: &DynamicImage) -> ClassifyResult<Vec<f32>> {
+        let resized = img.resize_exact(224, 224, image::imageops::FilterType::Lanczos3);
+
+        let rgb = resized.to_rgb8();
+        let (width, height) = rgb.dimensions();
+
+        let mut normalized_data = Vec::with_capacity((width * height * 3) as usize);
+
+        for pixel in rgb.pixels() {
+            normalized_data.push(pixel[0] as f32 / 255.0 - 0.485);
+            normalized_data.push(pixel[1] as f32 / 255.0 - 0.456);
+            normalized_data.push(pixel[2] as f32 / 255.0 - 0.406);
+        }
+
+        Ok(normalized_data)
+    }
+
+    fn extract_top_n_predictions(
+        outputs: &std::collections::HashMap<String, Vec<f32>>,
+        n: usize,
+    ) -> Vec<ClassPrediction> {
+        let mut all_predictions = Vec::new();
+
+        for (_, values) in outputs.iter() {
+            for (i, &score) in values.iter().enumerate() {
+                let class_name = if i < IMAGENET_CLASSES.len() {
+                    IMAGENET_CLASSES[i].to_string()
+                } else {
+                    format!("class_{}", i)
+                };
+
+                all_predictions.push(ClassPrediction {
+                    class_name: class_name.to_string(),
+                    confidence: score,
+                });
+            }
+
+            break;
+        }
+
+        all_predictions.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+        all_predictions.into_iter().take(n).collect()
+    }
+
+    #[allow(dead_code)]
+    pub fn get_imagenet_classes() -> &'static [&'static str] {
+        IMAGENET_CLASSES
+    }
+}

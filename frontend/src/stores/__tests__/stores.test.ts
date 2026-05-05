@@ -9,6 +9,23 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }))
 
+// Mock api module to intercept API calls
+const mockGetAllConfigs = vi.fn().mockResolvedValue([
+  { key: 'theme', value: 'dark' },
+  { key: 'language', value: 'en' },
+  { key: 'ai_concurrency', value: '5' },
+  { key: 'notification_enabled', value: 'false' },
+])
+
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    setConfigs: vi.fn().mockResolvedValue(undefined),
+    getAllConfigs: (...args: unknown[]) => mockGetAllConfigs(...args),
+  }
+})
+
 describe('useImageStore', () => {
   beforeEach(async () => {
     const { useImageStore } = await import('../useImageStore')
@@ -368,14 +385,29 @@ describe('useConfigStore', () => {
   it('loadConfigs 应该从 API 加载配置并设置 isLoaded', async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     const mockInvoke = vi.mocked(invoke)
-    mockInvoke.mockResolvedValue([
-      { key: 'theme', value: 'dark' },
-      { key: 'language', value: 'en' },
-      { key: 'ai_concurrency', value: '5' },
-      { key: 'notification_enabled', value: 'false' },
-    ])
+    // Mock get_all_configs to return config array
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_all_configs') {
+        return Promise.resolve([
+          { key: 'theme', value: 'dark' },
+          { key: 'language', value: 'en' },
+          { key: 'ai_concurrency', value: '5' },
+          { key: 'notification_enabled', value: 'false' },
+        ])
+      }
+      return Promise.resolve(undefined)
+    })
 
     const { useConfigStore } = await import('../useConfigStore')
+    // Reset state before test
+    useConfigStore.setState({
+      theme: 'system',
+      language: 'zh',
+      aiConcurrency: 3,
+      notificationEnabled: true,
+      isLoaded: false,
+      pendingChanges: {},
+    })
     await useConfigStore.getState().loadConfigs()
 
     const state = useConfigStore.getState()
@@ -388,11 +420,12 @@ describe('useConfigStore', () => {
   })
 
   it('loadConfigs 失败时应设置 isLoaded 为 true 并保留默认值', async () => {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const mockInvoke = vi.mocked(invoke)
-    mockInvoke.mockRejectedValue(new Error('Network error'))
+    // Make getAllConfigs fail for this test
+    mockGetAllConfigs.mockRejectedValueOnce(new Error('Network error'))
 
     const { useConfigStore } = await import('../useConfigStore')
+    // Reset to default theme
+    useConfigStore.setState({ theme: 'system', isLoaded: false })
     await useConfigStore.getState().loadConfigs()
 
     expect(useConfigStore.getState().isLoaded).toBe(true)
@@ -402,10 +435,23 @@ describe('useConfigStore', () => {
   it('saveConfigs 应该保存变更并清除 pendingChanges', async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     const mockInvoke = vi.mocked(invoke)
-    mockInvoke.mockResolvedValue(undefined)
+    // Mock both get_config (for rollback) and set_config
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_config') {
+        return Promise.resolve({ key: 'theme', value: 'system' })
+      }
+      if (cmd === 'set_config') {
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    })
 
     const { useConfigStore } = await import('../useConfigStore')
-    useConfigStore.setState({ pendingChanges: {} })
+    useConfigStore.setState({ 
+      pendingChanges: {},
+      theme: 'system',
+      aiConcurrency: 3,
+    })
 
     useConfigStore.getState().updateField('theme', 'dark')
     useConfigStore.getState().updateField('ai_concurrency', '8')

@@ -1,19 +1,45 @@
 // Tauri API Integration Layer
 // This module provides a clean interface to communicate with the Rust backend
 
-import { invoke } from '@tauri-apps/api/core'
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__) {
+    return tauriInvoke<T>(cmd, args)
+  }
+  console.warn('[api] invoke called outside Tauri context:', cmd, args)
+  throw new Error('Tauri not available. Please use the desktop app window, not browser.')
+}
 
 // ===== Image Management =====
+
+export interface ImportError {
+  file_path: string
+  reason: string
+}
 
 export interface ImportResult {
   success_count: number
   duplicate_count: number
   error_count: number
   image_ids: number[]
+  errors: ImportError[]
 }
 
 export async function importImages(filePaths: string[]): Promise<ImportResult> {
-  return invoke<ImportResult>('import_images', { filePaths })
+  console.log('[api] importImages called with:', filePaths)
+  const result = await invoke<ImportResult>('import_images', { filePaths })
+  console.log('[api] importImages result:', result)
+  // 如果有错误，抛出包含详细信息的错误
+  if (result.error_count > 0) {
+    const errorDetails = result.errors.map(e => `${e.file_path}: ${e.reason}`).join('\n')
+    console.error('[api] Import errors:', errorDetails)
+    // 如果全部失败，抛出错误
+    if (result.success_count === 0 && result.duplicate_count === 0) {
+      throw new Error(`导入失败:\n${errorDetails}`)
+    }
+  }
+  return result
 }
 
 export interface ImageQuery {
@@ -61,11 +87,12 @@ export interface ImageListResponse {
 }
 
 export async function getImages(query: ImageQuery): Promise<ImageListResponse> {
-  return invoke<ImageListResponse>('get_images', {
-    page: query.page,
-    page_size: query.page_size,
-    filters: query.filters,
+  const result = await invoke<ImageListResponse>('get_images', {
+    page: query.page ?? 1,
+    pageSize: query.page_size ?? 50,
+    filters: query.filters ?? null,
   })
+  return result
 }
 
 export async function getImageDetail(id: number): Promise<AppImage> {
@@ -586,6 +613,10 @@ export async function clearSampleData(): Promise<number> {
   return invoke<number>('clear_sample_data')
 }
 
+export async function loadSampleData(): Promise<number> {
+  return invoke<number>('load_sample_data')
+}
+
 // === XMP Metadata API ===
 
 export interface XmpMetadata {
@@ -634,4 +665,379 @@ export async function stopFileMonitor(): Promise<void> {
 
 export async function getMonitorStatus(): Promise<MonitorStatus> {
   return invoke<MonitorStatus>('get_monitor_status')
+}
+
+// ===== ONNX Runtime & AI Models =====
+
+export interface ModelStatus {
+  model_type: string
+  name: string
+  is_loaded: boolean
+  path: string
+}
+
+export interface ModelLoadResult {
+  success: boolean
+  model: ModelStatus | null
+  error?: string
+}
+
+export async function getAIModelStatus(): Promise<ModelStatus[]> {
+  return invoke<ModelStatus[]>('get_ai_model_status')
+}
+
+export async function loadAIModel(modelType: string, customPath?: string): Promise<ModelLoadResult> {
+  return invoke<ModelLoadResult>('load_ai_model', { modelType, customPath })
+}
+
+export async function unloadAIModel(modelType: string): Promise<boolean> {
+  return invoke<boolean>('unload_ai_model', { modelType })
+}
+
+// ===== Image Classification (MobileNet) =====
+
+export interface ClassPrediction {
+  class_name: string
+  confidence: number
+}
+
+export interface ClassificationResult {
+  label: string
+  confidence: number
+  top_n_predictions: ClassPrediction[]
+}
+
+export async function classifyImage(imagePath: string, topN?: number): Promise<ClassificationResult> {
+  return invoke<ClassificationResult>('classify_image', { imagePath, topN: topN ?? 5 })
+}
+
+// ===== Face Detection & Recognition =====
+
+export interface BoundingBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface Landmark {
+  x: number
+  y: number
+}
+
+export interface FaceDetection {
+  bbox: BoundingBox
+  landmarks: Landmark[]
+  confidence: number
+}
+
+export interface FaceEmbeddingInfo {
+  face_id: string
+  embedding: number[]
+  image_path: string
+  detection: FaceDetection
+}
+
+export interface FaceMatch {
+  face_id: string
+  similarity: number
+  face_embedding: FaceEmbeddingInfo
+}
+
+export async function detectFaces(imagePath: string, confidenceThreshold?: number): Promise<FaceDetection[]> {
+  return invoke<FaceDetection[]>('detect_faces', { imagePath, confidenceThreshold: confidenceThreshold ?? 0.5 })
+}
+
+export async function extractFaceEmbedding(imagePath: string, bbox: BoundingBox): Promise<FaceEmbeddingInfo> {
+  return invoke<FaceEmbeddingInfo>('extract_face_embedding', { imagePath, bbox })
+}
+
+export async function registerFace(imagePath: string, bbox: BoundingBox): Promise<string> {
+  return invoke<string>('register_face', { imagePath, bbox })
+}
+
+export async function recognizeFace(imagePath: string, bbox: BoundingBox, threshold?: number): Promise<FaceMatch | null> {
+  return invoke<FaceMatch | null>('recognize_face', { imagePath, bbox, threshold: threshold ?? 0.6 })
+}
+
+export async function getRegisteredFaceCount(): Promise<number> {
+  return invoke<number>('get_registered_face_count')
+}
+
+// ===== CLIP Embeddings =====
+
+export interface ClipEmbeddingInfo {
+  image_id: string
+  embedding: number[]
+  image_path: string
+}
+
+export async function embedImageWithClip(imagePath: string): Promise<ClipEmbeddingInfo> {
+  return invoke<ClipEmbeddingInfo>('embed_image_clip', { imagePath })
+}
+
+// ===== Vector Search (HNSW) =====
+
+export interface VectorEntry {
+  id: string
+  embedding: number[]
+  metadata?: Record<string, unknown>
+  image_path?: string
+}
+
+export interface SearchResultItem {
+  id: string
+  similarity: number
+  entry: VectorEntry
+}
+
+export interface IndexStats {
+  total_vectors: number
+  dimension: number
+  index_size_bytes: number
+}
+
+export async function insertVector(entry: VectorEntry): Promise<void> {
+  return invoke('insert_vector', { entry })
+}
+
+export async function searchVectors(query: number[], topK?: number, minSimilarity?: number): Promise<SearchResultItem[]> {
+  return invoke<SearchResultItem[]>('search_vectors', { query, topK: topK ?? 10, minSimilarity: minSimilarity ?? 0.3 })
+}
+
+export async function deleteVector(id: string): Promise<boolean> {
+  return invoke<boolean>('delete_vector', { id })
+}
+
+export async function getVectorIndexStats(): Promise<IndexStats> {
+  return invoke<IndexStats>('get_vector_index_stats')
+}
+
+// ===== Knowledge Graph =====
+
+export interface KgNode {
+  id: string
+  node_type: 'image' | 'entity' | 'tag' | 'concept'
+  label: string
+  properties: Record<string, unknown>
+  embedding?: number[]
+  community_id?: number | null
+  degree: number
+}
+
+export interface KgEdge {
+  id: string
+  source_id: string
+  target_id: string
+  edge_type: string
+  weight: number
+  properties: Record<string, unknown>
+}
+
+export interface KgCommunity {
+  id: number
+  size: number
+  central_node_id?: string | null
+  tags: string[]
+  density: number
+}
+
+export interface KgStats {
+  total_nodes: number
+  total_edges: number
+  node_types: Record<string, number>
+  edge_types: Record<string, number>
+  communities: number
+  avg_degree: number
+  density: number
+}
+
+export interface KgNeighbor {
+  node: KgNode
+  edge: KgEdge
+  distance: number
+}
+
+export interface KgPath {
+  nodes: KgNode[]
+  edges: KgEdge[]
+  total_weight: number
+  length: number
+}
+
+export interface KgBuildResult {
+  success: boolean
+  nodes_added: number
+  error?: string | null
+}
+
+export async function kgBuildGraph(): Promise<KgBuildResult> {
+  return invoke<KgBuildResult>('kg_build_graph')
+}
+
+export async function kgGetStats(): Promise<KgStats> {
+  return invoke<KgStats>('kg_get_stats')
+}
+
+export async function kgGetAllNodes(): Promise<KgNode[]> {
+  return invoke<KgNode[]>('kg_get_all_nodes')
+}
+
+export async function kgGetAllEdges(): Promise<KgEdge[]> {
+  return invoke<KgEdge[]>('kg_get_all_edges')
+}
+
+export async function kgGetCommunities(): Promise<KgCommunity[]> {
+  return invoke<KgCommunity[]>('kg_get_communities')
+}
+
+export async function kgGetCommunityNodes(communityId: number): Promise<KgNode[]> {
+  return invoke<KgNode[]>('kg_get_community_nodes', { communityId })
+}
+
+export async function kgGetNeighbors(
+  nodeId: string,
+  edgeTypes?: string[],
+  limit?: number
+): Promise<KgNeighbor[]> {
+  return invoke<KgNeighbor[]>('kg_get_neighbors', { nodeId, edgeTypes, limit })
+}
+
+export async function kgFindPath(sourceId: string, targetId: string): Promise<KgPath | null> {
+  return invoke<KgPath | null>('kg_find_path', { sourceId, targetId })
+}
+
+export async function kgSearchNodes(query: string, limit?: number): Promise<KgNode[]> {
+  return invoke<KgNode[]>('kg_search_nodes', { query, limit: limit ?? 20 })
+}
+
+export async function kgClear(): Promise<void> {
+  return invoke('kg_clear')
+}
+
+export async function kgLoadFromDb(): Promise<KgBuildResult> {
+  return invoke<KgBuildResult>('kg_load_from_db')
+}
+
+export async function kgSaveToDb(): Promise<KgBuildResult> {
+  return invoke<KgBuildResult>('kg_save_to_db')
+}
+
+// ===== Tag Correction (死命令接入) =====
+
+export interface TagCorrectionRequest {
+  image_id: number
+  old_tags: string[]
+  new_tags: string[]
+}
+
+export interface TagCorrectionRecord {
+  id: number
+  image_id: number
+  old_tags: string[]
+  new_tags: string[]
+  corrected_at: string
+}
+
+export async function recordTagCorrection(request: TagCorrectionRequest): Promise<number> {
+  return invoke<number>('record_tag_correction', { request })
+}
+
+export async function getTagCorrectionHistory(imageId: number): Promise<TagCorrectionRecord[]> {
+  return invoke<TagCorrectionRecord[]>('get_tag_correction_history', { imageId })
+}
+
+export async function getAllTagCorrections(limit?: number, offset?: number): Promise<TagCorrectionRecord[]> {
+  return invoke<TagCorrectionRecord[]>('get_all_tag_corrections', { limit, offset })
+}
+
+// ===== Error Patterns (死命令接入) =====
+
+export interface ErrorPattern {
+  id: number
+  pattern_name: string
+  pattern_description: string | null
+  occurrence_count: number
+  first_seen: string
+  last_seen: string
+}
+
+export interface RecordErrorPatternRequest {
+  pattern_name: string
+  pattern_description?: string
+}
+
+export async function recordErrorPattern(request: RecordErrorPatternRequest): Promise<number> {
+  return invoke<number>('record_error_pattern', { request })
+}
+
+export async function getErrorPatterns(limit?: number, minOccurrences?: number): Promise<ErrorPattern[]> {
+  return invoke<ErrorPattern[]>('get_error_patterns', { limit, minOccurrences })
+}
+
+export async function checkErrorPatternExists(patternName: string): Promise<ErrorPattern | null> {
+  return invoke<ErrorPattern | null>('check_error_pattern_exists', { patternName })
+}
+
+export async function deleteErrorPattern(patternId: number): Promise<void> {
+  return invoke('delete_error_pattern', { patternId })
+}
+
+export async function getHighFrequencyErrorPatterns(minCount?: number): Promise<ErrorPattern[]> {
+  return invoke<ErrorPattern[]>('get_high_frequency_error_patterns', { minCount })
+}
+
+// ===== Batch Operations (死命令接入) =====
+
+export interface BatchAITagRequest {
+  image_ids: number[]
+}
+
+export interface BatchTaskStatus {
+  total: number
+  completed: number
+  failed: number
+  in_progress: number
+}
+
+export async function startBatchAITag(imageIds: number[]): Promise<number> {
+  return invoke<number>('start_batch_ai_tag', { request: { image_ids: imageIds } })
+}
+
+export async function getBatchAIStatus(): Promise<BatchTaskStatus> {
+  return invoke<BatchTaskStatus>('get_batch_ai_status')
+}
+
+export async function pauseBatchAITask(): Promise<void> {
+  return invoke('pause_batch_ai_task')
+}
+
+export async function resumeBatchAITask(): Promise<void> {
+  return invoke('resume_batch_ai_task')
+}
+
+export async function cancelBatchAITask(): Promise<number> {
+  return invoke<number>('cancel_batch_ai_task')
+}
+
+export type TagOperation = 'Add' | 'Remove' | 'Replace'
+
+export interface BatchTagCorrectionRequest {
+  image_ids: number[]
+  tags: string[]
+  operation: TagOperation
+}
+
+export async function batchTagCorrection(request: BatchTagCorrectionRequest): Promise<number> {
+  return invoke<number>('batch_tag_correction', { request })
+}
+
+export interface BatchExportRequest {
+  image_ids: number[]
+  format: 'json' | 'csv' | 'xmp'
+  output_path: string
+}
+
+export async function batchExport(request: BatchExportRequest): Promise<ExportResult> {
+  return invoke<ExportResult>('batch_export', { request })
 }

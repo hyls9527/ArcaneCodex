@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImageCard } from './ImageCard'
 import { cn } from '@/utils/cn'
+import { toAssetUrl } from '@/utils/assetUrl'
 import type { AppImage } from '@/types/image'
 
 function getColumnCount(width: number): number {
@@ -112,7 +113,7 @@ export function ImageGrid({
               >
                 <ImageCard
                   id={image.id}
-                  src={image.thumbnail_path || ''}
+                  src={toAssetUrl(image.thumbnail_path) || toAssetUrl(image.file_path)}
                   fileName={image.file_name}
                   tags={image.ai_tags
                     ? (typeof image.ai_tags === 'string'
@@ -121,6 +122,7 @@ export function ImageGrid({
                     : []}
                   aiStatus={image.ai_status}
                   isSelected={selectedIds.includes(image.id)}
+                  isSample={image.file_path?.startsWith('/sample/') || image.file_name?.includes('sample')}
                   onClick={onImageClick}
                   onToggleSelect={onToggleSelect}
                 />

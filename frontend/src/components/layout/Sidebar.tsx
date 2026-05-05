@@ -6,6 +6,7 @@ import {
   Sparkles, 
   Copy,
   BarChart3,
+  Network,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
@@ -25,12 +26,19 @@ export function Sidebar({ currentPage }: SidebarProps) {
     { id: 'gallery' as const, label: t('navigation.gallery'), icon: ImageIcon },
     { id: 'ai' as const, label: t('navigation.aiTagging'), icon: Sparkles },
     { id: 'dedup' as const, label: t('navigation.dedup'), icon: Copy },
+    { id: 'knowledge_graph' as const, label: 'Knowledge Graph', icon: Network },
     { id: 'dashboard' as const, label: t('dashboard.title'), icon: BarChart3 },
     { id: 'settings' as const, label: t('navigation.settings'), icon: Settings },
   ]
   
   const handleNavigate = (page: Page) => {
-    navigate({ route: page, source: 'sidebar' })
+    console.log('[Sidebar] navigate to:', page)
+    try {
+      navigate({ route: page, source: 'sidebar' })
+      console.log('[Sidebar] navigate() resolved')
+    } catch (err) {
+      console.error('[Sidebar] navigate() threw:', err)
+    }
   }
   
   return (

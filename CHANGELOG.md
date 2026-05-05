@@ -20,27 +20,27 @@ Arcane Codex 是一个本地优先的图片知识库应用，支持 AI 自动打
 - 多推理源支持：LM Studio / Ollama / Hermes / 智谱 / OpenAI / OpenRouter
 - 模型自动发现：扫描本地服务端口，无需手动输入模型名
 - AI 打标三级状态：verified / provisional / rejected
-- 置信度校准：ECE 计算 + 按类别独立校准曲线
-- 独立验证层：CLIP zero-shot 接口 + 标签一致性校验
+- 置信度校准：数据库表已创建（calibration_samples/reports/curves），ECE 计算逻辑待实现
+- 独立验证层：CLIP embedding + ONNX Runtime（已集成到主流程，需 ONNX 模型文件运行；知识图谱引擎依赖此模块）
 - 用户反馈闭环：修正记录 API + 错误模式库
 - 数据库 v5 migration：新增校准/修正/错误模式表
 
 ### 🔒 安全加固
 
 - API Key AES-256-GCM 加密存储
-- Zip Slip 攻击防护
+- Zip Slip 攻击防护（部分实现，解压路径验证存在但未显式检查路径逃逸）
 - 路径清理与验证
 - CSP 内容安全策略强化
 - Tauri 安全配置
 
 ### ⚡ 性能优化
 
-- LRU 搜索缓存
+- 搜索缓存（HashMap + TTL 5 分钟）
 - 磁盘空间预检
 - 高效智能去重算法
 - 虚拟滚动 (大数据量图片列表)
 - 响应式网格布局
-- Vite 生产构建优化 (LTO + codegen-units)
+- Vite 生产构建优化 + Rust release profile 优化 (LTO + codegen-units)
 
 ### 🎨 前端
 

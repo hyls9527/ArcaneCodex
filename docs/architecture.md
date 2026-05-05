@@ -261,7 +261,7 @@ ArcaneCodex/
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    Data Protection                        │   │
-│  │  • API keys encrypted with AES-256-GCM                   │   │
+│  │  • API keys 基础加密存储（待改进为更安全的方案）          │   │
 │  │  • Database stored locally only                          │   │
 │  │  • No telemetry / data collection                        │   │
 │  └─────────────────────────────────────────────────────────┘   │
@@ -275,7 +275,7 @@ ArcaneCodex/
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    Network Security                       │   │
-│  │  • HTTPS only for API calls                              │   │
+│  │  • API 调用使用 HTTPS（用户配置的外部服务）              │   │
 │  │  • No external connections except AI providers           │   │
 │  │  • Certificate validation                                 │   │
 │  └─────────────────────────────────────────────────────────┘   │
@@ -290,16 +290,16 @@ ArcaneCodex/
 ### 前端
 
 - **代码分割**: 路由级别懒加载
-- **虚拟列表**: 大图库使用 react-window
+- **虚拟列表**: 大图库使用 @tanstack/react-virtual
 - **图片懒加载**: 缩略图按需加载
-- **缓存**: React Query / Zustand 持久化
+- **缓存**: Zustand 持久化
 
 ### 后端
 
 - **数据库索引**: 常用查询字段索引
-- **LRU 缓存**: 搜索结果缓存
+- **搜索缓存**: HashMap + TTL 5 分钟（非 LRU）
 - **异步处理**: tokio 并发
-- **缩略图**: 预生成多尺寸缩略图
+- **缩略图**: 生成 300x200 缩略图
 
 ---
 

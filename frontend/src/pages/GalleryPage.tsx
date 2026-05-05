@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, AlertCircle, Search, Link2, ImagePlus, CheckSquare, Trash2, X, Square, FolderOpen, FileImage } from 'lucide-react'
+import { Loader2, AlertCircle, Search, Link2, ImagePlus, CheckSquare, Trash2, X, Square, FolderOpen, FileImage, Database } from 'lucide-react'
 import { ImageGrid } from '../components/gallery/ImageGrid'
 import { ImageFilter } from '../components/gallery/ImageFilter'
 import { DropZone } from '../components/gallery/DropZone'
@@ -15,6 +15,7 @@ import {
   deleteImages,
   detectAiService,
   startAIProcessing,
+  loadSampleData,
 } from '../lib/api'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
@@ -51,9 +52,11 @@ export function GalleryPage({
 
   const [selectionMode, setSelectionMode] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [clearingFailed, setClearingFailed] = useState(false)
   const [showAiGuide, setShowAiGuide] = useState(false)
 
   const selectedCount = selectedIds.length
+  const failedCount = images.filter(img => img.ai_status === 'failed').length
   const hasFilters = !!(filters.ai_status || filters.category || filters.date_from || filters.date_to || (filters.tags && filters.tags.length > 0))
 
   useEffect(() => {
@@ -62,27 +65,33 @@ export function GalleryPage({
     }
   }, [filters.ai_status, filters.category, filters.date_from, filters.date_to, filters.tags, hasFilters, onLoadImages])
 
-  const handleFilesSelected = useCallback(async (files: File[]) => {
-    if (files.length === 0) return
+  const handleFilesSelected = useCallback(async (paths: string[]) => {
+    if (paths.length === 0) return
     try {
-      const paths = files.map(f => (f as TauriFile).path || f.name)
-      await importImages(paths)
+      console.log('[Gallery] Importing paths:', paths)
+      const result = await importImages(paths)
+      console.log('[Gallery] importImages result:', result)
       await onLoadImages()
-      addToast(t('gallery.importSuccess'), 'success')
 
-      // First-run AI service guide: detect after first successful import
+      if (result.success_count > 0) {
+        addToast(t('gallery.importSuccess'), 'success')
+      } else if (result.duplicate_count > 0) {
+        addToast(t('gallery.importDuplicate', { count: result.duplicate_count }), 'info')
+      }
+      if (result.error_count > 0) {
+        addToast(t('gallery.importPartialError', { count: result.error_count }), 'warning')
+      }
+
       const hasSeenGuide = localStorage.getItem('has_seen_ai_guide')
       if (!hasSeenGuide) {
         const ok = await detectAiService()
         if (!ok) {
           setShowAiGuide(true)
         } else {
-          // Service already available — mark as seen silently
           localStorage.setItem('has_seen_ai_guide', 'true')
         }
       }
 
-      // Auto-trigger AI processing if service is ready
       if (aiServiceReady) {
         try {
           await startAIProcessing()
@@ -91,7 +100,8 @@ export function GalleryPage({
           // Silently ignore — user can manually start from AI page
         }
       }
-    } catch {
+    } catch (e) {
+      console.error('[Gallery] Import failed:', e)
       addToast(t('errors.importFailed'), 'error')
     }
   }, [onLoadImages, addToast, t, aiServiceReady])
@@ -131,21 +141,37 @@ export function GalleryPage({
     deselectAll()
   }, [deselectAll])
 
+  const handleClearFailedImages = useCallback(async () => {
+    if (failedCount === 0) return
+    setClearingFailed(true)
+    try {
+      const failedIds = images.filter(img => img.ai_status === 'failed').map(img => img.id)
+      await deleteImages(failedIds)
+      addToast(t('gallery.clearedFailedImages', { count: failedCount }), 'success')
+      await onLoadImages()
+    } catch (err) {
+      console.error('[Gallery] clearFailed error:', err)
+      addToast(t('errors.clearFailedFailed'), 'error')
+    } finally {
+      setClearingFailed(false)
+    }
+  }, [failedCount, images, deleteImages, onLoadImages, addToast, t])
+
   const handleSelectFiles = useCallback(async () => {
     try {
       const selected = await openDialog({
         multiple: true,
-        filters: [{ name: 'Images', extensions: ['jpeg', 'jpg', 'png', 'webp', 'gif', 'heic', 'heif'] }],
+        filters: [{ name: 'Images', extensions: ['jpeg', 'jpg', 'png', 'webp', 'gif', 'bmp', 'tiff', 'tif', 'avif'] }],
         title: t('import.selectFiles'),
       })
       if (!selected) return
       const paths = Array.isArray(selected) ? selected : [selected]
-      const files = paths.map(p => Object.assign(new File([], p), { path: p }) as TauriFile)
-      await handleFilesSelected(files as unknown as File[])
-    } catch {
-      // User cancelled or dialog unavailable
+      await handleFilesSelected(paths)
+    } catch (e) {
+      console.error('[Gallery] Import failed:', e)
+      addToast(t('errors.importFailed'), 'error')
     }
-  }, [handleFilesSelected, t])
+  }, [handleFilesSelected, addToast, t])
 
   const handleSelectFolder = useCallback(async () => {
     try {
@@ -154,24 +180,11 @@ export function GalleryPage({
         title: t('import.selectFolder'),
       })
       if (!selected) return
-      // When a folder is selected, import the folder path directly
-      await importImages([selected as string])
-      await onLoadImages()
-      addToast(t('gallery.importSuccess'), 'success')
-
-      // Auto-trigger AI processing if service is ready
-      if (aiServiceReady) {
-        try {
-          await startAIProcessing()
-          addToast(t('gallery.aiAutoProcessing'), 'info')
-        } catch {
-          // Silently ignore
-        }
-      }
+      await handleFilesSelected([selected as string])
     } catch {
       addToast(t('errors.importFailed'), 'error')
     }
-  }, [onLoadImages, addToast, t, aiServiceReady])
+  }, [handleFilesSelected, addToast, t])
 
   if (loading) {
     return (
@@ -271,6 +284,16 @@ export function GalleryPage({
               <Link2 className="w-4 h-4" />
               {t('gallery.checkBrokenLinks')}
             </button>
+            {failedCount > 0 && (
+              <button
+                onClick={handleClearFailedImages}
+                disabled={clearingFailed}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white transition-colors"
+              >
+                {clearingFailed ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {t('gallery.clearFailed', { count: failedCount })}
+              </button>
+            )}
           </>
         )}
       </div>
@@ -342,6 +365,22 @@ export function GalleryPage({
                   >
                     <FolderOpen className="w-4 h-4" />
                     {t('import.selectFolder')}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const count = await loadSampleData()
+                        addToast(t('gallery.sampleDataLoaded', { count }), 'success')
+                        await onLoadImages()
+                      } catch (err) {
+                        console.error('[Gallery] loadSampleData error:', err)
+                        addToast(t('errors.loadSampleDataFailed'), 'error')
+                      }
+                    }}
+                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg border border-primary-300 dark:border-primary-700 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                  >
+                    <Database className="w-4 h-4" />
+                    {t('gallery.loadSampleData')}
                   </button>
                 </div>
                 <div className="flex flex-col gap-3 text-left bg-gray-50 dark:bg-dark-200 rounded-lg p-4">

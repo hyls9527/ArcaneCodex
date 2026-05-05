@@ -1,0 +1,14 @@
+[package]
+name = "tech-verify"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+xmpkit = "0.1"
+xmp-writer = "0.3"
+notify = { version = "7", features = ["macos_kqueue"] }
+ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+ndarray = "0.16"
+
+[features]
+default = []

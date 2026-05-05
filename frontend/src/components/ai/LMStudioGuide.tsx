@@ -289,9 +289,15 @@ export function LMStudioGuide({ autoDetect = false, onDismiss, onSkip }: LMStudi
                       <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-1">
                         {autoDetect ? t('guideStep2') : t('step2Title')}
                       </h3>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
                         {t('step2Desc')}
                       </p>
+                      <div className="flex items-start gap-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800/50">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          <strong>关键步骤：</strong>加载模型后，必须在 LM Studio 右侧面板点击「Start Server」启动本地 API 服务器（监听 localhost:1234），否则无法连接。
+                        </p>
+                      </div>
                     </div>
                     <Play className="w-5 h-5 text-zinc-300 dark:text-zinc-600 flex-shrink-0 mt-1" />
                   </div>

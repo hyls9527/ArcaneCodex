@@ -1,51 +1,78 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useDropzone, type FileRejection } from 'react-dropzone'
 import { Upload, ImageOff } from 'lucide-react'
 import { cn } from '@/utils/cn'
 
 interface DropZoneProps {
-  onFilesSelected: (files: File[]) => void
+  onFilesSelected: (paths: string[]) => void
   className?: string
-  accept?: Record<string, string[]>
   maxSize?: number
+}
+
+const SUPPORTED_EXTENSIONS = new Set([
+  '.jpeg', '.jpg', '.png', '.webp', '.gif', '.bmp', '.tiff', '.tif', '.avif'
+])
+
+function isSupportedImage(path: string): boolean {
+  const ext = '.' + path.split('.').pop()?.toLowerCase()
+  return SUPPORTED_EXTENSIONS.has(ext)
+}
+
+function isTauriAvailable(): boolean {
+  return typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
 }
 
 export function DropZone({ 
   onFilesSelected, 
   className,
-  accept = { 'image/*': ['.jpeg', '.jpg', '.png', '.webp', '.gif', '.heic', '.heif'] },
-  maxSize = 50 * 1024 * 1024
+  maxSize: _maxSize = 50 * 1024 * 1024
 }: DropZoneProps) {
   const { t } = useTranslation()
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
-  const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
-    if (rejectedFiles.length > 0) {
-      const errors = rejectedFiles.map(r => r.errors[0]?.message).filter(Boolean)
-      setError(errors.join(', '))
-      return
+  const dropZoneRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isTauriAvailable()) return
+
+    let cancelled = false
+    import('@tauri-apps/api/webview').then(({ getCurrentWebview }) => {
+      if (cancelled) return
+      const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+        if (event.payload.type === 'over') {
+          setIsDragging(true)
+        } else if (event.payload.type === 'leave') {
+          setIsDragging(false)
+        } else if (event.payload.type === 'drop') {
+          setIsDragging(false)
+          const paths = event.payload.paths.filter(isSupportedImage)
+          if (paths.length === 0) {
+            setError(t('gallery.noSupportedFiles', '没有找到支持的图片格式文件'))
+            return
+          }
+          setError(null)
+          onFilesSelected(paths)
+        }
+      })
+
+      return () => {
+        unlisten.then(fn => fn())
+      }
+    })
+
+    return () => {
+      cancelled = true
     }
-    
+  }, [onFilesSelected, t])
+
+  const handleClick = useCallback(() => {
     setError(null)
-    onFilesSelected(acceptedFiles)
-  }, [onFilesSelected])
-  
-  const { getRootProps, getInputProps } = useDropzone({
-    onDrop,
-    accept,
-    maxSize,
-    onDragEnter: () => setIsDragging(true),
-    onDragLeave: () => setIsDragging(false),
-    onDropAccepted: () => setIsDragging(false),
-    onDropRejected: () => setIsDragging(false),
-  })
-  
+  }, [])
+
   return (
     <div className={cn('relative', className)}>
       <div
-        {...getRootProps()}
+        ref={dropZoneRef}
         className={cn(
           'flex flex-col items-center justify-center p-8',
           'border-2 border-dashed rounded-xl',
@@ -59,9 +86,8 @@ export function DropZone({
         role="button"
         tabIndex={0}
         aria-label={t('gallery.dropzoneLabel')}
+        onClick={handleClick}
       >
-        <input {...getInputProps()} />
-        
         {error ? (
           <>
             <ImageOff className="w-12 h-12 text-red-500 mb-3" />

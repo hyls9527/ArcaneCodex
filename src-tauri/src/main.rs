@@ -14,6 +14,12 @@ mod utils;
 use std::sync::Arc;
 use tauri::Manager;
 use crate::core::file_watcher::FileWatcherService;
+use crate::core::onnx_runtime::OnnxRuntimeManager;
+use crate::core::image_classifier::ImageClassifier;
+use crate::core::face_detector::FaceDetector;
+use crate::core::clip_embedder::ClipEmbedder;
+use crate::core::vector_index::HnswVectorIndex;
+use crate::core::knowledge_graph::KnowledgeGraphEngine;
 
 fn main() {
     // 初始化日志系统
@@ -21,6 +27,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::images::import_images,
             commands::images::get_images,
@@ -81,9 +88,38 @@ fn main() {
             commands::xmp::export_as_xmp,
             commands::seed_data::check_sample_data,
             commands::seed_data::clear_sample_data,
+            commands::seed_data::load_sample_data,
             commands::file_monitor::start_file_monitor,
             commands::file_monitor::stop_file_monitor,
             commands::file_monitor::get_monitor_status,
+            // AI Core Commands (ONNX Runtime, Classification, Face Detection, CLIP, Vector Search)
+            commands::ai_core::get_ai_model_status,
+            commands::ai_core::load_ai_model,
+            commands::ai_core::unload_ai_model,
+            commands::ai_core::classify_image,
+            commands::ai_core::detect_faces,
+            commands::ai_core::extract_face_embedding,
+            commands::ai_core::register_face,
+            commands::ai_core::recognize_face,
+            commands::ai_core::get_registered_face_count,
+            commands::ai_core::embed_image_clip,
+            commands::ai_core::insert_vector,
+            commands::ai_core::search_vectors,
+            commands::ai_core::delete_vector,
+            commands::ai_core::get_vector_index_stats,
+            // Knowledge Graph Commands
+            commands::knowledge_graph::kg_build_graph,
+            commands::knowledge_graph::kg_get_stats,
+            commands::knowledge_graph::kg_get_all_nodes,
+            commands::knowledge_graph::kg_get_all_edges,
+            commands::knowledge_graph::kg_get_communities,
+            commands::knowledge_graph::kg_get_community_nodes,
+            commands::knowledge_graph::kg_get_neighbors,
+            commands::knowledge_graph::kg_find_path,
+            commands::knowledge_graph::kg_search_nodes,
+            commands::knowledge_graph::kg_clear,
+            commands::knowledge_graph::kg_load_from_db,
+            commands::knowledge_graph::kg_save_to_db,
         ])
         .setup(|app| {
             let (tx, _rx) = tokio::sync::broadcast::channel(256);
@@ -111,9 +147,54 @@ fn main() {
 
             app.manage(db.clone());
 
-            let queue = core::ai_queue::AITaskQueue::new(Arc::new(db), None)
+            let db_for_queue = db.clone();
+            let queue = core::ai_queue::AITaskQueue::new(Arc::new(db_for_queue), None)
                 .with_app_handle(app_handle.clone());
             app.manage(Arc::new(queue));
+
+            // Initialize AI Core services
+            let models_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join("models");
+
+            if !models_dir.exists() {
+                std::fs::create_dir_all(&models_dir).ok();
+            }
+
+            let vector_index_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join("vector_index");
+
+            if !vector_index_dir.exists() {
+                std::fs::create_dir_all(&vector_index_dir).ok();
+            }
+
+            let onnx_manager = Arc::new(OnnxRuntimeManager::new(&models_dir));
+            let classifier = Arc::new(ImageClassifier::new(onnx_manager.clone()));
+            let face_detector = Arc::new(FaceDetector::new(onnx_manager.clone()));
+            let clip_embedder = Arc::new(ClipEmbedder::new(onnx_manager.clone()));
+            let vector_index = Arc::new(HnswVectorIndex::new(512, &vector_index_dir));
+
+            app.manage(commands::ai_core::AppState {
+                onnx_manager,
+                classifier,
+                face_detector,
+                clip_embedder: clip_embedder.clone(),
+                vector_index: vector_index.clone(),
+            });
+
+            let kg_engine = Arc::new(KnowledgeGraphEngine::new(
+                Arc::new(db.clone()),
+                clip_embedder,
+                vector_index,
+            ));
+            app.manage(commands::knowledge_graph::KgState {
+                engine: kg_engine,
+            });
 
             Ok(())
         })

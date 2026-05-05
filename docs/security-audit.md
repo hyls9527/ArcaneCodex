@@ -15,25 +15,25 @@ Arcane Codex 是一款本地优先的桌面应用，安全设计遵循"最小权
 | 措施 | 状态 | 说明 |
 |------|------|------|
 | 本地数据存储 | ✅ 已实现 | 所有数据存储在用户本地，不上传云端 |
-| API Key 加密 | ✅ 已实现 | AES-256-GCM 加密存储 |
-| 数据库加密 | ⚠️ 部分 | SQLite 未加密（计划添加 SQLCipher） |
-| 备份加密 | ✅ 已实现 | AES-256-GCM 加密备份，支持密码保护 |
+| API Key 加密 | ⚠️ 基础实现 | 使用 AES-256-GCM，但 Nonce 固定，待改进 |
+| 数据库加密 | ❌ 未实现 | SQLite 未加密（计划添加 SQLCipher） |
+| 备份加密 | ⚠️ 基础实现 | 加密备份功能存在，待完整验证 |
 
 ### 2. 输入验证
 
 | 措施 | 状态 | 说明 |
 |------|------|------|
 | 路径遍历防护 | ✅ 已实现 | 阻止 `../` 等路径遍历攻击 |
-| 文件类型验证 | ✅ 已实现 | 基于魔数验证文件类型 |
+| 文件类型验证 | ✅ 已实现 | 基于扩展名验证（非魔数验证，待改进） |
 | 文件大小限制 | ✅ 已实现 | 防止大文件 DoS |
-| Zip Slip 防护 | ✅ 已实现 | 验证解压路径 |
+| Zip Slip 防护 | ⚠️ 部分实现 | 解压路径验证存在，但未显式检查路径逃逸 |
 
 ### 3. 网络安全
 
 | 措施 | 状态 | 说明 |
 |------|------|------|
-| HTTPS 强制 | ✅ 已实现 | 所有 API 调用使用 HTTPS |
-| 证书验证 | ✅ 已实现 | 验证服务器证书 |
+| HTTPS 强制 | ⚠️ 依赖配置 | 本地 AI 服务默认 HTTP，HTTPS 需用户配置 |
+| 证书验证 | ⚠️ 依赖配置 | 证书验证取决于用户配置的 AI 服务 |
 | 无遥测 | ✅ 已实现 | 不发送任何使用数据 |
 | 无第三方连接 | ✅ 已实现 | 仅连接用户配置的 AI 服务 |
 
@@ -44,59 +44,72 @@ Arcane Codex 是一款本地优先的桌面应用，安全设计遵循"最小权
 ### API Key 加密
 
 ```rust
-// 使用 AES-256-GCM 加密 API Key
+// crypto.rs — API Key 加密（⚠️ 使用固定 Nonce）
 pub fn encrypt_api_key(plaintext: &str) -> String {
-    let key = derive_key(); // 基于机器特征派生
+    let key = derive_key(); // SHA256(hostname + username + platform + arch + salt)
     let cipher = Aes256Gcm::new_from_slice(&key).expect("valid key length");
-    let nonce = Nonce::from_slice(b"ac-kd-nonce-12");
+    let nonce = Nonce::from_slice(b"ac-kd-nonce-12"); // 固定 Nonce（严重安全问题）
     // ... 加密逻辑
 }
 ```
 
+```rust
+// settings.rs — 备份加密（✅ 使用随机 Nonce）
+let nonce_bytes = rand::random::<[u8; 12]>(); // 随机 Nonce
+let nonce = Nonce::from_slice(&nonce_bytes);
+// ... 加密后 Nonce 与密文一起存储到文件
+```
+
 **安全评估**: 
-- ✅ 使用强加密算法 (AES-256-GCM)
-- ✅ 密钥派生使用 SHA-256
-- ⚠️ Nonce 固定（建议改为随机 Nonce）
+- ⚠️ API Key 加密使用固定 Nonce，相同明文产生相同密文（严重安全问题）
+- ✅ 备份加密已正确使用随机 Nonce + 存储到文件
+- ⚠️ 密钥派生仅做一次 SHA256，安全性远低于 PBKDF2/Argon2
+- 📋 建议：将 API Key 加密改为随机 Nonce + 前置存储模式（与备份加密一致）
 
 ### 路径验证
 
 ```rust
-pub fn validate_path(path: &Path, base_dir: &Path) -> AppResult<PathBuf> {
-    let canonical = path.canonicalize()?;
-    let base = base_dir.canonicalize()?;
-    
-    if !canonical.starts_with(&base) {
-        return Err(AppError::InvalidPath("Path traversal detected".into()));
+// 实际函数名：sanitize_path（位于 images.rs）
+// 注意：当前标记为 #[expect(dead_code)]，未被主流程调用
+fn sanitize_path(base_dir: &Path, user_input: &str) -> Result<PathBuf, String> {
+    let canonical = match input_path.canonicalize() { ... };
+    if !canonical.starts_with(base_dir) {
+        return Err("Path traversal detected".to_string());
     }
     Ok(canonical)
 }
 ```
 
 **安全评估**:
-- ✅ 阻止路径遍历攻击
+- ⚠️ `sanitize_path` 函数存在但标记为 dead_code，当前未被主流程调用
 - ✅ 使用 canonicalize 规范化路径
 - ✅ 验证路径前缀
+- 📋 建议：移除 dead_code 标记，在文件操作中统一调用
 
 ### 文件类型验证
 
 ```rust
-pub fn validate_image_type(path: &Path) -> AppResult<()> {
-    let mut file = File::open(path)?;
-    let mut magic = [0u8; 8];
-    file.read_exact(&mut magic)?;
-    
-    match &magic[..] {
-        [0xFF, 0xD8, 0xFF, ..] => Ok(()), // JPEG
-        [0x89, 0x50, 0x4E, 0x47, ..] => Ok(()), // PNG
-        // ... 其他格式
-        _ => Err(AppError::InvalidFileType),
+// 当前实现：基于扩展名验证
+fn validate_file(file_path: &Path) -> AppResult<(String, u64)> {
+    let extension = file_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if !SUPPORTED_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(AppError::validation(format!(
+            "不支持的文件格式: .{}", extension
+        )));
     }
+    // ...
 }
 ```
 
 **安全评估**:
-- ✅ 基于魔数验证，不依赖扩展名
-- ✅ 阻止伪装文件攻击
+- ⚠️ 当前基于扩展名验证，不依赖文件内容
+- ⚠️ 无法阻止伪装文件攻击（如 .jpg 扩展名的恶意文件）
+- 📋 计划：添加基于魔数（magic bytes）的文件头验证
 
 ---
 
@@ -108,6 +121,7 @@ pub fn validate_image_type(path: &Path) -> AppResult<()> {
 |------|------|---------|
 | 本地数据库未加密 | 数据泄露风险 | 计划添加 SQLCipher 支持 |
 | API Key 存储在内存 | 内存转储泄露 | 使用安全字符串类型 |
+| 固定 Nonce | AES-256-GCM 加密强度严重降低，相同明文产生相同密文 | 改用随机 Nonce，存储 Nonce 与密文一起 |
 
 ### 中风险
 
@@ -120,7 +134,6 @@ pub fn validate_image_type(path: &Path) -> AppResult<()> {
 
 | 风险 | 影响 | 缓解措施 |
 |------|------|---------|
-| 固定 Nonce | 加密强度降低 | 改用随机 Nonce |
 | 依赖漏洞 | 潜在攻击面 | 定期 cargo audit |
 
 ---
@@ -131,7 +144,7 @@ pub fn validate_image_type(path: &Path) -> AppResult<()> {
 
 - [x] 输入验证
 - [x] 路径验证
-- [x] 文件类型验证
+- [x] 文件类型验证（扩展名级别，待升级为魔数验证）
 - [x] API Key 加密
 - [x] 错误处理
 - [ ] 日志脱敏
@@ -172,20 +185,26 @@ pub fn validate_image_type(path: &Path) -> AppResult<()> {
 
 ---
 
-## 合规性
+## 合规性声明
 
-### GDPR 合规
+### GDPR 合规性评估
+
+以下项目基于设计目标评估，非正式合规认证：
 
 - ✅ 数据本地存储，用户完全控制
 - ✅ 不收集个人数据
 - ✅ 不使用 Cookie
-- ✅ 支持数据导出和删除
+- ⚠️ 支持数据导出和删除（功能存在，待完整验证）
 
-### CCPA 合规
+### CCPA 合规性评估
+
+以下项目基于设计目标评估，非正式合规认证：
 
 - ✅ 不出售个人信息
 - ✅ 不共享个人信息
 - ✅ 用户拥有所有数据
+
+> **注意**: 本应用未经过正式的 GDPR/CCPA 合规审计，上述评估基于产品设计原则。
 
 ---
 
@@ -203,7 +222,7 @@ pub fn validate_image_type(path: &Path) -> AppResult<()> {
 
 | 日期 | 版本 | 审计范围 | 结果 |
 |------|------|---------|------|
-| 2026-05-03 | v1.0.0-rc | 全面安全审计 | 通过 |
+| 2026-05-03 | v1.0.0-rc | 内部安全评估 | 发现问题待修复 |
 
 ---
 

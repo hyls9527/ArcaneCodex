@@ -97,30 +97,47 @@ export const useImageStore = create<ImageState>()(
         const hasFilters = filters.ai_status || filters.category || filters.date_from || filters.date_to || (filters.tags && filters.tags.length > 0)
         try {
           set({ loading: true, error: null })
+          console.log('[ImageStore] loadImages called:', { page, pageSize, hasFilters, filters })
           const result = await getImages({
             page,
             page_size: pageSize,
             filters: hasFilters ? filters : undefined,
           })
+          console.log('[ImageStore] getImages result:', JSON.stringify(result)?.substring(0, 500))
           if (result && result.images && Array.isArray(result.images)) {
+            console.log('[ImageStore] Setting images count:', result.images.length)
             set({ images: result.images, loading: false })
           } else {
+            console.warn('[ImageStore] Invalid result format:', result)
             set({ error: 'common.loadFailed', loading: false })
           }
-        } catch (err) {
-          // Tauri invoke errors are objects like { code: '...', message: '...' }
+        } catch (err: unknown) {
+          console.error('[ImageStore] loadImages CATCH:', err)
           let message = 'common.unknownError'
-          if (err && typeof err === 'object') {
-            if ('message' in err && typeof err.message === 'string') {
-              message = err.message
-            } else if ('code' in err && typeof err.code === 'string') {
-              message = err.code
+          if (err === null || err === undefined) {
+            message = 'null or undefined error'
+          } else if (typeof err === 'string') {
+            message = err
+          } else if (typeof err === 'object') {
+            const e = err as Record<string, unknown>
+            if ('message' in e && typeof e.message === 'string') {
+              try {
+                const parsed = JSON.parse(e.message) as { code?: string; message?: string }
+                message = parsed.message || parsed.code || e.message
+              } catch {
+                message = e.message
+              }
+            } else if ('code' in e && typeof e.code === 'string') {
+              message = e.code
             } else {
               message = JSON.stringify(err)
             }
           } else if (err instanceof Error) {
             message = err.message
+          } else {
+            message = String(err)
           }
+          console.error('[ImageStore] loadImages error message:', message)
           set({ error: `errors.loadImagesFailed: ${message}`, loading: false })
         }
       },

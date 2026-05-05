@@ -245,6 +245,91 @@ fn get_available_disk_space(path: &Path) -> AppResult<u64> {
     }
 }
 
+fn expand_paths(input_paths: &[String]) -> Vec<String> {
+    let mut expanded = Vec::new();
+
+    for path_str in input_paths {
+        let path = Path::new(path_str);
+
+        if !path.exists() {
+            info!("路径不存在，跳过: {}", path_str);
+            continue;
+        }
+
+        if path.is_dir() {
+            info!("检测到目录，开始扫描: {}", path_str);
+            scan_directory(path, &mut expanded);
+        } else {
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+                expanded.push(path_str.clone());
+            } else {
+                info!("跳过不支持的文件格式: {}", path_str);
+            }
+        }
+    }
+
+    expanded
+}
+
+fn scan_directory(dir: &Path, results: &mut Vec<String>) {
+    match fs::read_dir(dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    scan_directory(&path, results);
+                } else {
+                    let ext = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+                        results.push(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            warn!("无法读取目录 {}: {}", dir.display(), e);
+        }
+    }
+}
+
+/// 验证文件魔术字节是否与声明的格式一致
+fn validate_magic_bytes(file_path: &Path, expected_ext: &str) -> AppResult<bool> {
+    use std::io::Read;
+
+    let mut file = fs::File::open(file_path)
+        .map_err(|e| AppError::io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+    let mut header = [0u8; 16];
+    let bytes_read = file.read(&mut header)
+        .map_err(|e| AppError::io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+
+    if bytes_read < 4 {
+        return Ok(false);
+    }
+
+    let is_valid = match expected_ext {
+        "jpg" | "jpeg" => header[0..3] == [0xFF, 0xD8, 0xFF],
+        "png" => header[0..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+        "gif" => header[0..3] == [0x47, 0x49, 0x46],
+        "webp" => header[0..4] == [0x52, 0x49, 0x46, 0x46] && header[8..12] == [0x57, 0x45, 0x42, 0x50],
+        "bmp" => header[0..2] == [0x42, 0x4D],
+        "ico" => header[0..4] == [0x00, 0x00, 0x01, 0x00],
+        "tiff" | "tif" => header[0..4] == [0x49, 0x49, 0x2A, 0x00] || header[0..4] == [0x4D, 0x4D, 0x00, 0x2A],
+        "avif" => header[4..12] == [0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66],
+        _ => true,
+    };
+
+    Ok(is_valid)
+}
+
 fn validate_file(file_path: &Path) -> AppResult<(String, u64)> {
     if !file_path.exists() {
         return Err(AppError::validation(format!(
@@ -300,6 +385,13 @@ fn validate_file(file_path: &Path) -> AppResult<(String, u64)> {
         return Err(AppError::validation(format!(
             "不支持的 MIME 类型: {}",
             mime_type
+        )));
+    }
+
+    if !validate_magic_bytes(file_path, &extension)? {
+        return Err(AppError::validation(format!(
+            "文件魔术字节与扩展名不匹配: .{}",
+            extension
         )));
     }
 
@@ -423,17 +515,24 @@ pub async fn import_images(
     db: State<'_, Database>,
     file_paths: Vec<String>,
 ) -> AppResult<ImportResult> {
-    info!("开始导入 {} 个文件", file_paths.len());
+    info!("开始导入 {} 个路径", file_paths.len());
 
-    let total = file_paths.len();
+    let expanded_paths = expand_paths(&file_paths);
+    info!("路径展开后: {} 个文件 (原始 {} 个路径)", expanded_paths.len(), file_paths.len());
+
+    let total = expanded_paths.len();
+
+    if total == 0 {
+        return Err(AppError::validation("未找到可导入的图片文件".to_string()));
+    }
 
     // Check disk space before importing
-    if !file_paths.is_empty() {
-        let first_file_path = Path::new(&file_paths[0]);
+    if !expanded_paths.is_empty() {
+        let first_file_path = Path::new(&expanded_paths[0]);
         match get_available_disk_space(first_file_path) {
             Ok(available_space) => {
                 let mut total_size_needed: u64 = 0;
-                for path_str in &file_paths {
+                for path_str in &expanded_paths {
                     let file_path = Path::new(path_str);
                     if let Ok(metadata) = fs::metadata(file_path) {
                         total_size_needed += metadata.len();
@@ -470,9 +569,22 @@ pub async fn import_images(
     let conn = db.open_connection().map_err(AppError::database)?;
     let mut pending_imports: Vec<PendingImport> = Vec::new();
 
-    for (index, path_str) in file_paths.iter().enumerate() {
+    for (index, path_str) in expanded_paths.iter().enumerate() {
         let file_path = Path::new(path_str);
-        let file_name = file_path
+        let canonical_path = match file_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("路径规范化失败: {} - {}", path_str, e);
+                result.error_count += 1;
+                result.errors.push(ImportError {
+                    file_path: path_str.clone(),
+                    reason: format!("路径规范化失败: {}", e),
+                });
+                continue;
+            }
+        };
+        let canonical_str = canonical_path.to_string_lossy().to_string();
+        let file_name = canonical_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
@@ -489,11 +601,11 @@ pub async fn import_images(
             },
         );
 
-        match validate_file(file_path) {
-            Ok((mime_type, file_size)) => match calculate_sha256(file_path) {
+        match validate_file(&canonical_path) {
+            Ok((mime_type, file_size)) => match calculate_sha256(&canonical_path) {
                 Ok(hash) => match is_duplicate(&conn, &hash) {
                     Ok(true) => {
-                        info!("跳过重复文件: {}", path_str);
+                        info!("跳过重复文件: {}", canonical_str);
                         result.duplicate_count += 1;
                         let _ = app.emit(
                             "import-progress",
@@ -507,13 +619,13 @@ pub async fn import_images(
                     }
                     Ok(false) => {
                         match insert_image_record(
-                            &conn, path_str, &file_name, file_size, &hash, &mime_type,
+                            &conn, &canonical_str, &file_name, file_size, &hash, &mime_type,
                         ) {
                             Ok(id) => {
                                 info!("[阶段1] 成功插入图片记录: {} (ID: {})", file_name, id);
                                 pending_imports.push(PendingImport {
                                     id,
-                                    file_path: path_str.clone(),
+                                    file_path: canonical_str.clone(),
                                     file_name: file_name.clone(),
                                 });
                                 result.success_count += 1;
@@ -533,7 +645,7 @@ pub async fn import_images(
                                 error!("数据库插入失败: {} - {}", file_name, e);
                                 result.error_count += 1;
                                 result.errors.push(ImportError {
-                                    file_path: path_str.clone(),
+                                    file_path: canonical_str.clone(),
                                     reason: e.to_string(),
                                 });
                                 let _ = app.emit(
@@ -552,7 +664,7 @@ pub async fn import_images(
                         error!("重复检测失败: {} - {}", file_name, e);
                         result.error_count += 1;
                         result.errors.push(ImportError {
-                            file_path: path_str.clone(),
+                            file_path: canonical_str.clone(),
                             reason: e.to_string(),
                         });
                         let _ = app.emit(
@@ -570,7 +682,7 @@ pub async fn import_images(
                     error!("哈希计算失败: {} - {}", file_name, e);
                     result.error_count += 1;
                     result.errors.push(ImportError {
-                        file_path: path_str.clone(),
+                        file_path: canonical_str.clone(),
                         reason: format!("哈希计算失败: {}", e),
                     });
                     let _ = app.emit(
@@ -585,10 +697,10 @@ pub async fn import_images(
                 }
             },
             Err(e) => {
-                warn!("文件验证失败: {} - {}", path_str, e);
+                warn!("文件验证失败: {} - {}", canonical_str, e);
                 result.error_count += 1;
                 result.errors.push(ImportError {
-                    file_path: path_str.clone(),
+                    file_path: canonical_str.clone(),
                     reason: e.to_string(),
                 });
                 let _ = app.emit(
@@ -624,34 +736,44 @@ pub async fn import_images(
             // 重新获取数据库连接（短生命周期）
             match db.open_connection() {
                 Ok(conn) => {
-                    // 缩略图生成
+                    let file_path_clone = import.file_path.clone();
                     let thumb_path = generate_thumbnail_path(import.id, &app);
-                    let thumb_result =
-                        ImageProcessor::generate_thumbnail(&import.file_path, &thumb_path);
+                    let thumb_path_clone = thumb_path.clone();
 
-                    // pHash 计算
-                    let phash_result = ImageProcessor::calculate_phash(&import.file_path);
+                    let process_result = tokio::task::spawn_blocking(move || {
+                        let thumb_result =
+                            ImageProcessor::generate_thumbnail(&file_path_clone, &thumb_path_clone);
+                        let phash_result = ImageProcessor::calculate_phash(&file_path_clone);
+                        let exif_result = ImageProcessor::extract_exif(&file_path_clone);
+                        let (w, h) = match &exif_result {
+                            Ok(exif) => (
+                                exif.get("width").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                                exif.get("height").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                            ),
+                            Err(_) => match image::open(Path::new(&file_path_clone)) {
+                                Ok(img) => {
+                                    let (width, height) = img.dimensions();
+                                    (width as i32, height as i32)
+                                }
+                                Err(_) => (0, 0),
+                            },
+                        };
+                        (thumb_result, phash_result, exif_result, w, h)
+                    }).await;
 
-                    // EXIF 提取
-                    let exif_result = ImageProcessor::extract_exif(&import.file_path);
-
-                    // 提取宽高（优先从 EXIF，否则从图片直接读取）
-                    let (w, h) = match &exif_result {
-                        Ok(exif) => (
-                            exif.get("width").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                            exif.get("height").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                        ),
-                        Err(_) => match image::open(Path::new(&import.file_path)) {
-                            Ok(img) => {
-                                let (width, height) = img.dimensions();
-                                (width as i32, height as i32)
-                            }
-                            Err(_) => (0, 0),
-                        },
+                    let (thumb_result, phash_result, exif_result, w, h) = match process_result {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!("[阶段2] spawn_blocking panic (ID: {}): {}", import.id, e);
+                            continue;
+                        }
                     };
 
                     // 写回元数据（失败仅 warn，不阻塞导入）
-                    let thumb_path_str = thumb_path.clone();
+                    let thumb_path_str = match &thumb_result {
+                        Ok(_) => thumb_path.clone(),
+                        Err(_) => String::new(),
+                    };
                     let phash_str = match &phash_result {
                         Ok(h) => h.clone(),
                         Err(_) => String::new(),
@@ -746,13 +868,13 @@ pub async fn get_images(
     );
     let conn = db.open_connection().map_err(AppError::database)?;
 
-    let offset = page * page_size;
+    let offset = page.saturating_sub(1) * page_size;
 
     let mut count_sql = String::from("SELECT COUNT(*) FROM images");
     let mut sql = String::from(
         "SELECT id, file_path, file_name, file_size, file_hash, mime_type,
-         width, height, thumbnail_path, phash, ai_status, ai_description,
-         ai_category, ai_confidence, source, created_at, updated_at,
+         width, height, thumbnail_path, phash, ai_status, ai_tags, ai_description,
+         ai_category, ai_confidence, ai_tag_status, ai_provider, source, created_at, updated_at,
          COALESCE(generation_source, 'manual_import') as generation_source
          FROM images",
     );
@@ -813,13 +935,16 @@ pub async fn get_images(
                 "thumbnail_path": row.get::<_, Option<String>>(8)?,
                 "phash": row.get::<_, Option<String>>(9)?,
                 "ai_status": row.get::<_, String>(10)?,
-                "ai_description": row.get::<_, Option<String>>(11)?,
-                "ai_category": row.get::<_, Option<String>>(12)?,
-                "ai_confidence": row.get::<_, Option<f64>>(13)?,
-                "source": row.get::<_, String>(14)?,
-                "created_at": row.get::<_, String>(15)?,
-                "updated_at": row.get::<_, String>(16)?,
-                "generation_source": row.get::<_, String>(17)?,
+                "ai_tags": row.get::<_, Option<String>>(11)?,
+                "ai_description": row.get::<_, Option<String>>(12)?,
+                "ai_category": row.get::<_, Option<String>>(13)?,
+                "ai_confidence": row.get::<_, Option<f64>>(14)?,
+                "ai_tag_status": row.get::<_, Option<String>>(15)?,
+                "ai_provider": row.get::<_, Option<String>>(16)?,
+                "source": row.get::<_, String>(17)?,
+                "created_at": row.get::<_, String>(18)?,
+                "updated_at": row.get::<_, String>(19)?,
+                "generation_source": row.get::<_, String>(20)?,
             }))
         })
         .map_err(AppError::database)?;
@@ -833,6 +958,12 @@ pub async fn get_images(
             }
         })
         .collect();
+
+    info!(
+        "get_images returning: total={}, images_count={}",
+        total,
+        images.len()
+    );
 
     Ok(serde_json::json!({
         "images": images,

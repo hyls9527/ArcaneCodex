@@ -604,7 +604,7 @@
     - [x] 搜索无结果时显示空状态图标和提示
     - [x] 空查询时回退到正常画廊视图
     - [x] 添加 i18n key: gallery.searchResults, gallery.resultsCount, gallery.noResults, common.searching, errors.searchFailed
-    - [x] TypeScript 编译通过 (`tsc --noEmit` 零错误)
+    - [x] TypeScript 编译通过 (`tsc --noEmit` 无错误)
 
 - [x] **5.1.5 前后端 API 契约对齐** (运行时崩溃风险)
     - [x] `scan_duplicates`: 前端传 `{ threshold }` → 后端期望 `Option<ScanRequest>`，对齐为 `{ request: { threshold: hammingThreshold } }`
@@ -928,7 +928,7 @@
 
 ## Phase 7: AI 打标准确率提升 (AI Tagging Accuracy Improvement)
 
-> **来源**: Swarm Debate 产出。核心洞察：接近 100% 准确率不是提升模型能力，而是通过架构隔离不可靠性。
+> **来源**: Swarm Debate 产出。核心洞察：提升准确率的关键不是单纯提升模型能力，而是通过架构隔离不可靠性。
 
 ### 7.1 置信度校准层
 - [x] **7.1.1 实现置信度校准模块**

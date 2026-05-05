@@ -1,11 +1,55 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, ZoomIn, ZoomOut, RotateCw, Download, Trash2, Camera, Clock, MapPin, Tag, Archive, RefreshCw, Info } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { cn } from '@/utils/cn'
+import { toAssetUrl } from '@/utils/assetUrl'
 import { NarrativePrompt } from './NarrativePrompt'
 import { getNarratives, writeNarrative } from '@/lib/api'
 import type { Narrative } from '@/lib/api'
+
+function generatePlaceholderGradient(fileName: string, tags: string[]): string {
+  const hash = fileName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  const tagHash = tags.join('').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  const hue1 = (hash * 137) % 360
+  const hue2 = (tagHash * 173) % 360
+  const hue3 = ((hash + tagHash) * 97) % 360
+  return `linear-gradient(135deg, hsl(${hue1}, 70%, 60%), hsl(${hue2}, 65%, 55%), hsl(${hue3}, 75%, 50%))`
+}
+
+function SampleViewerPlaceholder({ fileName, tags }: { fileName: string; tags: string[] }) {
+  const gradient = useMemo(() => generatePlaceholderGradient(fileName, tags), [fileName, tags])
+  const initials = fileName
+    .split(/[_\-.]/)
+    .map(w => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
+  return (
+    <div
+      className="flex-1 flex items-center justify-center"
+      style={{ background: gradient }}
+    >
+      <div className="text-center">
+        <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center mb-4 backdrop-blur-sm mx-auto">
+          <span className="text-4xl font-bold text-white">{initials}</span>
+        </div>
+        <p className="text-lg text-white font-medium mb-2">{fileName}</p>
+        <p className="text-sm text-white/70">示例图片</p>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-4 justify-center">
+            {tags.map((tag, i) => (
+              <span key={i} className="text-xs px-2 py-1 rounded-full bg-white/20 text-white">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 interface ImageViewerProps {
   image: {
@@ -67,6 +111,7 @@ export function ImageViewer({
   }
   
   const exifParsed = parseExifData(image.exif_data)
+  const isSample = image.file_path?.includes('/sample/') || image.file_name?.includes('sample')
 
   useEffect(() => {
     getNarratives(image.id).then(setNarratives).catch(() => setNarratives([]))
@@ -153,27 +198,31 @@ export function ImageViewer({
         </button>
         
         {/* Image Container */}
-        <div
-          className="flex-1 flex items-center justify-center overflow-hidden"
-          onWheel={handleWheel}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <motion.img
-            src={image.file_path}
-            alt={image.ai_description || image.file_name}
-            className={cn(
-              'max-w-full max-h-full object-contain transition-transform',
-              isDragging && 'cursor-grabbing'
-            )}
-            style={{
-              transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-            }}
-          />
-        </div>
+        {isSample ? (
+          <SampleViewerPlaceholder fileName={image.file_name} tags={image.ai_tags || []} />
+        ) : (
+          <div
+            className="flex-1 flex items-center justify-center overflow-hidden"
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <motion.img
+              src={toAssetUrl(image.file_path)}
+              alt={image.ai_description || image.file_name}
+              className={cn(
+                'max-w-full max-h-full object-contain transition-transform',
+                isDragging && 'cursor-grabbing'
+              )}
+              style={{
+                transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+              }}
+            />
+          </div>
+        )}
         
         {/* Info Panel (Slide-in from right) */}
         <AnimatePresence>

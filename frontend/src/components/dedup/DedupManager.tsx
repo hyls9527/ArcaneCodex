@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Search, Trash2, Check, ArrowRight } from 'lucide-react'
 import { cn } from '@/utils/cn'
+import { toAssetUrl } from '@/utils/assetUrl'
 import { motion, AnimatePresence } from 'motion/react'
 import type { DuplicateGroup } from '@/lib/api'
 
@@ -209,10 +210,7 @@ export function DedupManager({
                     )}
                   >
                     <img
-                      src={image.file_path.startsWith('file:///') 
-                        ? image.file_path.replace('file:///', '')
-                        : image.file_path
-                        || '/placeholder.png'}
+                      src={toAssetUrl(image.file_path) || '/placeholder.png'}
                       alt={image.file_name}
                       className="w-full aspect-square object-cover"
                     />

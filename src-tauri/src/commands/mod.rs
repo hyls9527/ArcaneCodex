@@ -1,6 +1,7 @@
 // Tauri Commands module
 
 pub mod ai;
+pub mod ai_core;
 pub mod batch_ops;
 pub mod dedup;
 pub mod error_patterns;
@@ -8,6 +9,7 @@ pub mod export;
 pub mod file_monitor;
 pub mod images;
 pub mod inference_settings;
+pub mod knowledge_graph;
 pub mod narrative;
 pub mod search;
 pub mod seed_data;

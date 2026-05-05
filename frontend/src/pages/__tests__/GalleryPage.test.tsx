@@ -15,6 +15,10 @@ vi.mock('@/lib/api', () => ({
   importImages: vi.fn().mockResolvedValue({ success_count: 1, duplicate_count: 0, error_count: 0, image_ids: [1] }),
   checkBrokenLinks: vi.fn().mockResolvedValue({ broken_count: 0, broken_images: [] }),
   checkSampleData: vi.fn().mockResolvedValue({ has_sample_data: false }),
+  deleteImages: vi.fn().mockResolvedValue(1),
+  detectAiService: vi.fn().mockResolvedValue([]),
+  startAIProcessing: vi.fn().mockResolvedValue(undefined),
+  loadSampleData: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/components/gallery/ImageGrid', () => ({
@@ -79,6 +83,10 @@ vi.mock('lucide-react', () => ({
   ImagePlus: () => <span data-testid="icon-image-plus" />,
   FileImage: () => <span data-testid="icon-file-image" />,
   FolderOpen: () => <span data-testid="icon-folder-open" />,
+  Database: () => <span data-testid="icon-database" />,
+  CheckSquare: () => <span data-testid="icon-check-square" />,
+  Trash2: () => <span data-testid="icon-trash2" />,
+  X: () => <span data-testid="icon-x" />,
 }))
 
 // ===== Test Data =====

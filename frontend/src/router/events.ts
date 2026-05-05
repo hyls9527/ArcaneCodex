@@ -37,10 +37,10 @@ if (isTauri) {
 }
 
 export const navigate = (payload: RoutePayload) => {
-  if (isTauri && tauriEmit) {
-    return tauriEmit(ROUTE_CHANGE, payload)
-  }
   webEmit(ROUTE_CHANGE, payload)
+  if (isTauri && tauriEmit) {
+    tauriEmit(ROUTE_CHANGE, payload)
+  }
   return Promise.resolve()
 }
 

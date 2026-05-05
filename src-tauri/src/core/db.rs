@@ -131,6 +131,16 @@ impl Database {
         }
 
         let conn = self.open_connection()?;
+        let user_version_after_v7: i32 =
+            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        drop(conn);
+
+        if user_version_after_v7 < 8 {
+            info!("Applying migration v8: knowledge graph persistence");
+            self.apply_v8_knowledge_graph()?;
+        }
+
+        let conn = self.open_connection()?;
         let final_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
         info!("Database is up to date (version {})", final_version);
 
@@ -437,6 +447,53 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_xmp_sidecars_dirty ON xmp_sidecars(is_dirty);
 
             PRAGMA user_version = 7;
+        ",
+        )?;
+        Ok(())
+    }
+
+    fn apply_v8_knowledge_graph(&self) -> Result<()> {
+        let conn = self.open_connection()?;
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS kg_nodes (
+                id TEXT PRIMARY KEY,
+                node_type TEXT NOT NULL,
+                label TEXT NOT NULL,
+                properties_json TEXT,
+                embedding_json TEXT,
+                community_id INTEGER,
+                degree INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS kg_edges (
+                id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                edge_type TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 1.0,
+                properties_json TEXT,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS kg_communities (
+                id INTEGER PRIMARY KEY,
+                size INTEGER NOT NULL,
+                central_node_id TEXT,
+                tags_json TEXT,
+                density REAL NOT NULL DEFAULT 0.0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_kg_edges_source ON kg_edges(source_id);
+            CREATE INDEX IF NOT EXISTS idx_kg_edges_target ON kg_edges(target_id);
+            CREATE INDEX IF NOT EXISTS idx_kg_edges_type ON kg_edges(edge_type);
+            CREATE INDEX IF NOT EXISTS idx_kg_nodes_type ON kg_nodes(node_type);
+            CREATE INDEX IF NOT EXISTS idx_kg_nodes_community ON kg_nodes(community_id);
+
+            PRAGMA user_version = 8;
         ",
         )?;
         Ok(())

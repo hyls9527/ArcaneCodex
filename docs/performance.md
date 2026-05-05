@@ -40,15 +40,13 @@ CREATE INDEX idx_images_file_hash ON images(file_hash);
 CREATE INDEX idx_image_tags_image_id ON image_tags(image_id);
 CREATE INDEX idx_image_tags_tag_id ON image_tags(tag_id);
 CREATE INDEX idx_tags_name ON tags(name);
-CREATE INDEX idx_tags_category ON tags(category);
 
--- 全文搜索
-CREATE VIRTUAL TABLE IF NOT EXISTS images_fts USING fts5(
-    description,
-    content='images',
-    content_rowid='id'
-);
+-- 语义搜索（jieba-rs 分词 + 倒排索引）
+CREATE INDEX idx_search_index_term ON search_index(term);
+CREATE INDEX idx_search_index_image_id ON search_index(image_id);
 ```
+
+> **注意**: 项目使用 jieba-rs 中文分词 + 自建倒排索引实现语义搜索，未使用 SQLite FTS5。
 
 ---
 
@@ -57,13 +55,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS images_fts USING fts5(
 ### 搜索缓存
 
 ```rust
-// 已实现：LRU 缓存，TTL 5 分钟
+// 已实现：HashMap 缓存 + TTL 5 分钟（非 LRU）
 const SEARCH_CACHE_TTL: Duration = Duration::from_secs(300);
+static SEARCH_CACHE: OnceLock<Mutex<HashMap<u64, (Instant, Vec<SearchResult>)>>> = OnceLock::new();
 ```
 
 ### 缩略图缓存
 
-- 预生成多尺寸缩略图：200px, 400px, 800px
+- 生成缩略图：300x200px（当前实现）
 - 按需加载，懒加载策略
 - 缓存目录：`%APPDATA%/arcane-codex/thumbnails/`
 
@@ -74,14 +73,17 @@ const SEARCH_CACHE_TTL: Duration = Duration::from_secs(300);
 ### 代码分割
 
 ```typescript
-// vite.config.ts 已配置
+// vite.config.ts 实际配置
 build: {
   rollupOptions: {
     output: {
       manualChunks: {
-        vendor: ['react', 'react-dom', 'react-router-dom'],
-        ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
-        i18n: ['i18next', 'react-i18next'],
+        'vendor-react': ['react', 'react-dom'],
+        'vendor-state': ['zustand'],
+        'vendor-ui': ['motion', 'clsx', 'lucide-react'],
+        'vendor-i18n': ['i18next', 'react-i18next'],
+        'vendor-virtual': ['@tanstack/react-virtual'],
+        'vendor-dropzone': ['react-dropzone'],
       },
     },
   },
@@ -90,21 +92,16 @@ build: {
 
 ### 虚拟列表
 
-大图库使用 `react-window` 实现虚拟滚动：
+大图库使用 `@tanstack/react-virtual` 实现虚拟滚动（当前实现）：
 
 ```tsx
-import { FixedSizeGrid } from 'react-window'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
-<FixedSizeGrid
-  columnCount={columns}
-  columnWidth={cellSize}
-  height={height}
-  rowCount={Math.ceil(images.length / columns)}
-  rowHeight={cellSize}
-  width={width}
->
-  {ImageCell}
-</FixedSizeGrid>
+const virtualizer = useVirtualizer({
+  count: images.length,
+  getScrollElement: () => parentRef.current,
+  estimateSize: () => cellSize,
+})
 ```
 
 ---
@@ -131,11 +128,13 @@ for image in images {
 ### 数据库连接池
 
 ```rust
-// 使用 r2d2 连接池
-let manager = SqliteConnectionManager::file(&db_path);
-let pool = r2d2::Pool::builder()
-    .max_size(10)
-    .build(manager)?;
+// 使用 r2d2 连接池（默认配置，未设置 max_size）
+let manager = SqliteConnectionManager::file(&db_path)
+    .with_init(|conn| {
+        conn.execute_batch(PRAGMA_CONFIG)?;
+        Ok(())
+    });
+let pool = Pool::new(manager)?;
 ```
 
 ---
@@ -162,11 +161,13 @@ let pool = r2d2::Pool::builder()
 
 | 指标 | 目标值 | 说明 |
 |------|--------|------|
-| 图片导入 | < 100ms/张 | 含缩略图生成 |
-| 搜索响应 | < 200ms | 10000 张图片内 |
-| AI 打标 | < 3s/张 | 取决于 AI 服务 |
-| 启动时间 | < 2s | 冷启动 |
-| 内存占用 | < 500MB | 10000 张图片 |
+| 图片导入 | < 500ms/张 | 含缩略图生成，目标值，未实测 |
+| 搜索响应 | < 500ms | 10000 张图片内，目标值，未实测 |
+| AI 打标 | 5-30s/张 | 取决于本地 AI 模型和硬件配置，经验估算 |
+| 启动时间 | < 5s | 冷启动，目标值，未实测 |
+| 内存占用 | < 500MB | 10000 张图片，目标值，未实测 |
+
+> **注意**: 以上性能指标均为设计目标值，尚未进行系统化基准测试验证。
 
 ### 监控代码
 
@@ -186,31 +187,17 @@ pub async fn search_images(db: &Database, query: &str) -> AppResult<Vec<Image>> 
 
 ## 性能测试
 
-### 基准测试
+> **注意**: 项目尚未实现系统化基准测试。以下为规划中的测试方案。
+
+### 基准测试（规划中）
 
 ```bash
-# 运行性能测试
-cargo bench
+# 计划：添加 Rust 基准测试
+# cargo bench
 
 # 前端性能分析
 npm run build -- --mode production
 npx vite-bundle-visualizer
-```
-
-### 负载测试
-
-```rust
-#[cfg(test)]
-mod benches {
-    use super::*;
-    use test::Bencher;
-
-    #[bench]
-    fn bench_search(b: &mut Bencher) {
-        let db = setup_test_db();
-        b.iter(|| db.search("sunset beach"));
-    }
-}
 ```
 
 ---

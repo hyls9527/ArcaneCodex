@@ -11,7 +11,13 @@
   "app": {
     "withGlobalTauri": false,
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:1234 http://127.0.0.1:1234; img-src 'self' asset: https://asset.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:1234 http://127.0.0.1:1234; img-src 'self' asset: https://asset.localhost; script-src 'self'; style-src 'self'; font-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["$APPDATA/**", "$APPLOCALDATA/**", "$DOWNLOAD/**", "$DOCUMENT/**", "$PICTURE/**"]
+        }
+      },
       "freezePrototype": true,
       "capabilities": [
         {
@@ -23,7 +29,11 @@
             "core:window:allow-minimize",
             "core:window:allow-maximize",
             "core:window:allow-unmaximize",
-            "core:window:allow-show"
+            "core:window:allow-show",
+            "dialog:default",
+            "dialog:allow-open",
+            "dialog:allow-save",
+            "shell:allow-open"
           ]
         }
       ]

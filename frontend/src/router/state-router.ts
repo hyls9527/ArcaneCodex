@@ -43,11 +43,12 @@ type RouterAction =
   | { type: 'INIT' }
 
 const VALID_TRANSITIONS: Record<AppRoute, AppRoute[]> = {
-  gallery: ['dashboard', 'ai', 'dedup', 'settings'],
-  dashboard: ['gallery', 'ai', 'dedup', 'settings'],
-  ai: ['gallery', 'dashboard', 'dedup', 'settings'],
-  dedup: ['gallery', 'dashboard', 'ai', 'settings'],
-  settings: ['gallery', 'dashboard', 'ai', 'dedup'],
+  gallery: ['dashboard', 'ai', 'dedup', 'settings', 'knowledge_graph'],
+  dashboard: ['gallery', 'ai', 'dedup', 'settings', 'knowledge_graph'],
+  ai: ['gallery', 'dashboard', 'dedup', 'settings', 'knowledge_graph'],
+  dedup: ['gallery', 'dashboard', 'ai', 'settings', 'knowledge_graph'],
+  settings: ['gallery', 'dashboard', 'ai', 'dedup', 'knowledge_graph'],
+  knowledge_graph: ['gallery', 'dashboard', 'ai', 'dedup', 'settings'],
 }
 
 function routerReducer(state: RouterState, action: RouterAction): RouterState {

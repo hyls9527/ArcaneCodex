@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Filter, Calendar, Tag, Hash } from 'lucide-react'
 import { useImageStore } from '@/stores/useImageStore'
@@ -9,6 +9,18 @@ export function ImageFilter() {
   const { filters, setFilters, images } = useImageStore()
   const [isOpen, setIsOpen] = useState(false)
   const [localFilters, setLocalFilters] = useState(filters)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
 
   // Sync store filters to local state
   useEffect(() => {
@@ -69,7 +81,7 @@ export function ImageFilter() {
   }
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
@@ -88,7 +100,7 @@ export function ImageFilter() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-40 p-4">
+        <div className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-40 p-4 max-h-[80vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">{t('filter.title')}</h3>
             <div className="flex gap-2">

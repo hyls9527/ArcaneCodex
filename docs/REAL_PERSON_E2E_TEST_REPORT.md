@@ -1,8 +1,10 @@
-# Arcane Codex 真人模拟 E2E 测试报告
+# Arcane Codex Playwright 自动化测试报告
 
 > **测试版本**: v0.9.0 | **测试日期**: 2026-04-30 | **测试工具**: Playwright 1.59.1 (Chromium headless)
-> **测试环境**: Windows 11, Tauri 2.0 桌面应用, LM Studio (qwen2.5-vl-7b-instruct @ :1234)
+> **测试环境**: Windows 11, Vite 开发服务器 (localhost:1420)
 > **测试脚本**: frontend/arcane-codex-e2e-test.mjs (802 行, 48 项测试用例)
+
+> **重要声明**: 本测试为 Playwright 自动化测试，非真人测试。因 Tauri IPC 在 headless Chromium 中不可用，后端功能未实际验证。
 
 ---
 
@@ -10,7 +12,7 @@
 
 ### 1.1 测试方法论
 
-本次测试采用 **Playwright 自动化 + 源码逆向分析** 双重验证：
+本次测试采用 **Playwright 自动化 + 源码分析** 验证前端 UI：
 
 1. **源码深度分析**：测试前对 21 个核心源文件逐行审读（前端 12 个组件/页面 + 后端 6 个命令模块 + 3 个状态管理 Store）
 2. **Playwright 自动化执行**：通过 headless Chromium 连接 Vite 开发服务器 (localhost:1420)
@@ -210,15 +212,15 @@ Playwright 通过 HTTP 连接 localhost:1420（Vite 开发服务器），但 **T
 
 ## 六、产品理念符合度
 
-> "用 AI 理解照片内容，用自然语言找到你想要的那一张，全部运行在本地"
+> "用本地 AI 分析照片内容生成标签，通过关键词搜索找到你想要的那一张，全部运行在本地"
 
 | 维度 | 评分 | 依据 |
 |------|------|------|
-| 本地优先 | 5/5 | LM Studio 默认配置，6种本地 Provider |
-| AI 理解照片 | 4/5 | Qwen2.5-VL 视觉模型，结构化 JSON 输出 |
-| 自然语言搜索 | 4/5 | search_index 文本匹配（非向量搜索） |
+| 本地优先 | 5/5 | LM Studio 默认配置，多种本地 Provider |
+| AI 内容分析 | 3/5 | Qwen2.5-VL 视觉模型生成标签，结构化 JSON 输出 |
+| 关键词搜索 | 3/5 | search_index 文本匹配（非向量语义搜索） |
 | 隐私保护 | 5/5 | 本地 SQLite，图片不上传 |
-| 开箱即用 | 4/5 | 自动发现本地 AI 服务 |
+| 开箱即用 | 3/5 | 需配置本地 AI 服务 |
 
 ---
 

@@ -205,3 +205,53 @@ pub fn clear_sample_data(db: State<'_, Database>) -> AppResult<i64> {
     info!("Cleared {} sample images", deleted);
     Ok(deleted as i64)
 }
+
+#[tauri::command]
+pub fn load_sample_data(db: State<'_, Database>) -> AppResult<i64> {
+    let conn = db.open_connection().map_err(AppError::database)?;
+
+    let existing: i64 = conn
+        .query_row("SELECT COUNT(*) FROM images WHERE source = 'sample'", [], |row| row.get(0))
+        .map_err(AppError::database)?;
+
+    if existing > 0 {
+        info!("Sample data already exists ({} images)", existing);
+        return Ok(existing);
+    }
+
+    let mut inserted = 0i64;
+    for entry in SAMPLE_ENTRIES {
+        conn.execute(
+            "INSERT INTO images (
+                file_path, file_name, file_size, file_hash, mime_type,
+                width, height, ai_status, ai_tags, ai_description,
+                ai_category, ai_confidence, ai_model, ai_provider,
+                ai_tag_status, source, generation_source
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            rusqlite::params![
+                entry.file_path,
+                entry.file_name,
+                entry.file_size,
+                entry.file_hash,
+                entry.mime_type,
+                entry.width,
+                entry.height,
+                entry.ai_status,
+                entry.ai_tags,
+                entry.ai_description,
+                entry.ai_category,
+                entry.ai_confidence,
+                entry.ai_model,
+                entry.ai_provider,
+                entry.ai_tag_status,
+                entry.source,
+                "sample",
+            ],
+        )
+        .map_err(AppError::database)?;
+        inserted += 1;
+    }
+
+    info!("Loaded {} sample images", inserted);
+    Ok(inserted)
+}

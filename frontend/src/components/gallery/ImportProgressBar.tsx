@@ -20,29 +20,39 @@ export function ImportProgressBar({ onComplete }: ImportProgressProps) {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    const unlisten = listen<ImportProgressPayload>('import-progress', (event) => {
-      const payload = event.payload
-      // Map backend statuses to frontend display logic
-      const isCompleted = payload.status === 'success'
-        || (payload.current > 0 && payload.current === payload.total && payload.status !== 'processing')
+    let unlistenFn: (() => void) | null = null
 
-      setProgress({
-        ...payload,
-        status: isCompleted ? 'processing' : payload.status, // keep original for tracking
-      })
-      setVisible(true)
+    const setupListener = async () => {
+      try {
+        const unlisten = await listen<ImportProgressPayload>('import-progress', (event) => {
+          const payload = event.payload
+          const isCompleted = payload.status === 'success'
+            || (payload.current > 0 && payload.current === payload.total && payload.status !== 'processing')
 
-      if (isCompleted || (payload.current > 0 && payload.total > 0 && payload.current >= payload.total)) {
-        setTimeout(() => {
-          setVisible(false)
-          setProgress(null)
-          onComplete?.()
-        }, 1500)
+          setProgress({
+            ...payload,
+            status: isCompleted ? 'processing' : payload.status,
+          })
+          setVisible(true)
+
+          if (isCompleted || (payload.current > 0 && payload.total > 0 && payload.current >= payload.total)) {
+            setTimeout(() => {
+              setVisible(false)
+              setProgress(null)
+              onComplete?.()
+            }, 1500)
+          }
+        })
+        unlistenFn = unlisten
+      } catch {
+        // Not in Tauri environment, ignore
       }
-    })
+    }
+
+    setupListener()
 
     return () => {
-      unlisten.then((fn) => fn())
+      unlistenFn?.()
     }
   }, [onComplete])
 

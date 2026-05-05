@@ -1,8 +1,9 @@
 [package]
 name = "arcane-codex"
 version = "1.0.0-rc"
-description = "Arcane Codex - Local-first Image Knowledge Base"
-authors = ["Arcane Codex Team"]
+description = "Arcane Codex - Local-first AI Image Knowledge System"
+authors = ["hyls9527"]
+license = "MIT"
 edition = "2021"
 rust-version = "1.75"
 build = "build.rs"
@@ -11,8 +12,9 @@ build = "build.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -76,6 +78,9 @@ xmp-writer = "0.3"
 
 # 文件监控
 notify = { version = "7", features = ["macos_kqueue"] }
+
+# AI 推理引擎 - ONNX Runtime
+ort = { version = "2.0.0-rc.12", features = ["download-binaries", "copy-dylibs"] }
 
 # 系统信息（磁盘空间）
 [target.'cfg(windows)'.dependencies]

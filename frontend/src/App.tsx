@@ -23,6 +23,7 @@ const AIPage = lazy(() => import('./pages/AIPage').then(m => ({ default: m.AIPag
 const DedupPage = lazy(() => import('./pages/DedupPage').then(m => ({ default: m.DedupPage })))
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })))
 const SettingsPage = lazy(() => import('./components/settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const KnowledgeGraphView = lazy(() => import('./components/gallery/KnowledgeGraphView').then(m => ({ default: m.default })))
 
 function App() {
   const { current: currentPage } = useStateRouter('gallery')
@@ -191,6 +192,7 @@ function App() {
                   <DedupPage addToast={addToast} onImagesChanged={loadImages} />
                 )}
                 {currentPage === 'dashboard' && <DashboardPage />}
+                {currentPage === 'knowledge_graph' && <KnowledgeGraphView />}
               </Suspense>
             </main>
           </div>
