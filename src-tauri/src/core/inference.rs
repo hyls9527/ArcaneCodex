@@ -1,3 +1,4 @@
+use crate::core::lm_studio::parse_ai_response;
 use crate::utils::error::{AppError, AppResult};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,7 @@ pub struct AIResult {
     pub model: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum InferenceProviderType {
     LMStudio,
     Ollama,
@@ -23,7 +24,7 @@ pub enum InferenceProviderType {
     OpenRouter,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProviderConfig {
     pub provider_type: InferenceProviderType,
     pub base_url: String,
@@ -51,6 +52,8 @@ pub trait InferenceProvider: Send + Sync {
     fn model(&self) -> &str;
     async fn analyze_image(&self, image_path: &str) -> AppResult<AIResult>;
     async fn health_check(&self) -> AppResult<Vec<String>>;
+    async fn check_vision_capability(&self) -> AppResult<bool>;
+    fn clone_box(&self) -> Box<dyn InferenceProvider>;
 }
 
 pub struct ProviderFactory;
@@ -107,123 +110,24 @@ impl InferenceProvider for OpenAICompatibleAdapter {
     }
 
     async fn analyze_image(&self, image_path: &str) -> AppResult<AIResult> {
-        let result = self.0.analyze_image(image_path).await?;
-        Ok(AIResult {
-            tags: result.tags,
-            description: result.description,
-            category: result.category,
-            confidence: result.confidence,
-            raw_response: result.raw_response,
-            provider: self.1.clone(),
-            model: self.0.config.model.clone(),
-        })
+        let mut result = self.0.analyze_image(image_path).await?;
+        result.provider = self.1.clone();
+        result.model = self.0.config.model.clone();
+        Ok(result)
     }
 
     async fn health_check(&self) -> AppResult<Vec<String>> {
         let models = self.0.health_check().await?;
         Ok(models.into_iter().map(|m| m.id).collect())
     }
-}
 
-fn encode_image_to_base64(image_path: &str) -> AppResult<String> {
-    let bytes = std::fs::read(image_path)
-        .map_err(|e| AppError::validation(format!("读取图片文件失败: {}", e)))?;
-    Ok(data_encoding::BASE64.encode(&bytes))
-}
-
-fn detect_mime_type(image_path: &str) -> AppResult<String> {
-    let path = std::path::Path::new(image_path);
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    Ok(match ext.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        _ => "image/jpeg",
+    async fn check_vision_capability(&self) -> AppResult<bool> {
+        self.0.check_model_vision_capability().await
     }
-    .to_string())
-}
 
-fn build_prompt() -> String {
-    r#"请分析这张图片,并以以下 JSON 格式返回:
-{
-  "tags": ["标签1", "标签2", "标签3"],
-  "description": "一句话描述图片内容",
-  "category": "风景|人物|物品|动物|建筑|文档|其他",
-  "confidence": 0.95
-}
-要求:
-- tags: 5-10个关键词,中文优先,避免重复和过于宽泛的词
-- description: 简洁准确,1-2句话,不超过50字
-- category: 从上述分类中选择一个
-- confidence: 0.0-1.0之间的数字,表示你的置信度
-
-仅返回合法 JSON,不要包含 Markdown 代码块标记或其他解释。"#
-        .to_string()
-}
-
-fn parse_ai_response(content: &str, provider: &str, model: &str) -> AppResult<AIResult> {
-    let content = content.trim();
-    let content = if content.starts_with("```") {
-        let lines: Vec<&str> = content.lines().collect();
-        if lines.len() >= 2 {
-            lines[1..lines.len() - 1].join("\n")
-        } else {
-            content
-                .trim_start_matches("```json")
-                .trim_end_matches("```")
-                .to_string()
-        }
-    } else {
-        content.to_string()
-    };
-
-    let parsed: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-        AppError::validation(format!(
-            "解析 AI JSON 响应失败: {} - 原始内容: {}",
-            e, content
-        ))
-    })?;
-
-    let tags = parsed
-        .get("tags")
-        .and_then(|t| t.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let description = parsed
-        .get("description")
-        .and_then(|d| d.as_str())
-        .unwrap_or("No description")
-        .to_string();
-    let category = parsed
-        .get("category")
-        .and_then(|c| c.as_str())
-        .unwrap_or("other")
-        .to_string();
-    let confidence = parsed
-        .get("confidence")
-        .and_then(|c| c.as_f64())
-        .unwrap_or(0.5);
-
-    Ok(AIResult {
-        tags,
-        description,
-        category,
-        confidence,
-        raw_response: content,
-        provider: provider.to_string(),
-        model: model.to_string(),
-    })
+    fn clone_box(&self) -> Box<dyn InferenceProvider> {
+        Box::new(OpenAICompatibleAdapter(self.0.clone(), self.1.clone()))
+    }
 }
 
 pub struct OpenAIClient {
@@ -243,6 +147,7 @@ impl OpenAIClient {
         timeout_secs: u64,
     ) -> AppResult<Self> {
         let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(timeout_secs))
             .build()
             .map_err(|e| AppError::validation(format!("创建 HTTP 客户端失败: {}", e)))?;
@@ -270,9 +175,9 @@ impl InferenceProvider for OpenAIClient {
     }
 
     async fn analyze_image(&self, image_path: &str) -> AppResult<AIResult> {
-        let image_base64 = encode_image_to_base64(image_path)?;
-        let mime_type = detect_mime_type(image_path)?;
-        let prompt = build_prompt();
+        let image_base64 = crate::core::lm_studio::encode_image_to_base64(image_path)?;
+        let mime_type = crate::core::lm_studio::detect_mime_type(image_path)?;
+        let prompt = crate::core::lm_studio::build_prompt();
 
         let request_body = serde_json::json!({
             "model": self.model,
@@ -346,6 +251,28 @@ impl InferenceProvider for OpenAIClient {
     async fn health_check(&self) -> AppResult<Vec<String>> {
         Ok(vec![self.model.clone()])
     }
+
+    async fn check_vision_capability(&self) -> AppResult<bool> {
+        let model_lower = self.model.to_lowercase();
+        let is_vision = model_lower.contains("gpt-4o")
+            || model_lower.contains("gpt-4-turbo")
+            || model_lower.contains("claude-3")
+            || model_lower.contains("gemini")
+            || model_lower.contains("qwen2.5-vl")
+            || model_lower.contains("llava")
+            || model_lower.contains("vision");
+        Ok(is_vision)
+    }
+
+    fn clone_box(&self) -> Box<dyn InferenceProvider> {
+        Box::new(OpenAIClient {
+            client: self.client.clone(),
+            provider_type: self.provider_type.clone(),
+            base_url: self.base_url.clone(),
+            model: self.model.clone(),
+            api_key: self.api_key.clone(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -394,6 +321,7 @@ impl ModelDiscoveryService {
         port: u16,
     ) -> Result<Vec<DiscoveredModel>, ()> {
         let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(3))
             .timeout(Duration::from_secs(3))
             .build()
             .map_err(|_| ())?;

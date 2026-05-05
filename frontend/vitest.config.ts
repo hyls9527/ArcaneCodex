@@ -28,6 +28,8 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
     },
+    // 排除 Playwright E2E 测试文件
+    exclude: ['node_modules', 'e2e'],
     // Windows 终端输出优化：禁用线程隔离以提高稳定性
     poolOptions: {
       threads: {

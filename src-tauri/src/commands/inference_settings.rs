@@ -157,7 +157,22 @@ pub async fn test_inference_connection(db: State<'_, Database>) -> AppResult<Str
     let provider = ProviderFactory::create(config)?;
     let models = provider.health_check().await?;
 
-    Ok(format!("连接成功，可用模型: {}", models.join(", ")))
+    let vision_status = match provider.check_vision_capability().await {
+        Ok(true) => "✅ 支持视觉分析".to_string(),
+        Ok(false) => {
+            "⚠️ 当前模型不支持视觉分析\n"
+                .to_string()
+                + "   💡 图片分析功能将不可用\n"
+                + "   请切换到支持视觉的模型（如 Qwen2.5-VL、LLaVA、Gemma-4、GPT-4o 等）"
+        }
+        Err(e) => format!("⚠️ 无法检测视觉能力: {}", e),
+    };
+
+    Ok(format!(
+        "连接成功，可用模型: {}\n\n{}",
+        models.join(", "),
+        vision_status
+    ))
 }
 
 #[tauri::command]

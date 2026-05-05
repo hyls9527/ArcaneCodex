@@ -1,5 +1,6 @@
+use crate::core::circuit_breaker::CircuitBreaker;
 use crate::core::db::Database;
-use crate::core::inference::{ProviderConfig, ProviderFactory};
+use crate::core::inference::{InferenceProvider, ProviderConfig, ProviderFactory};
 use crate::core::search_index::SearchIndexBuilder;
 use crate::models::ImageCategory;
 use crate::utils::crypto;
@@ -137,6 +138,9 @@ impl AITaskQueue {
         let receiver = Arc::new(TokioMutex::new(receiver));
         let command_receiver = Arc::new(TokioMutex::new(command_receiver));
 
+        let circuit_breaker = Arc::new(CircuitBreaker::new(5, 30000));
+        let cached_provider = Arc::new(TokioMutex::new(None));
+
         for worker_id in 0..self.concurrency {
             let worker = Worker {
                 worker_id,
@@ -150,6 +154,8 @@ impl AITaskQueue {
                 failed_tasks: Arc::new(AtomicUsize::new(0)),
                 db: self.db.clone(),
                 app_handle: self.app_handle.clone(),
+                circuit_breaker: circuit_breaker.clone(),
+                cached_provider: cached_provider.clone(),
             };
             tokio::spawn(worker.run());
         }
@@ -358,6 +364,8 @@ struct Worker {
     failed_tasks: Arc<AtomicUsize>,
     db: Arc<Database>,
     app_handle: Option<AppHandle>,
+    circuit_breaker: Arc<CircuitBreaker>,
+    cached_provider: Arc<TokioMutex<Option<(ProviderConfig, Box<dyn InferenceProvider>)>>>,
 }
 
 impl Worker {
@@ -424,10 +432,53 @@ impl Worker {
 
         let _ = self.update_ai_status(image_id, "processing");
 
+        if !self.circuit_breaker.allow_request() {
+            self.handle_ai_failure(image_id, task.retry_count, "Provider 熔断中，跳过请求")
+                .await;
+            return;
+        }
+
         let provider_config = self.query_provider_config();
-        match ProviderFactory::create(provider_config) {
-            Ok(provider) => match provider.analyze_image(file_path).await {
+
+        let provider: Box<dyn InferenceProvider> = {
+            let mut cache = self.cached_provider.lock().await;
+            if let Some((ref cached_config, ref provider)) = *cache {
+                if *cached_config == provider_config {
+                    ProviderFactory::create(provider_config.clone()).unwrap_or_else(|_| provider.clone_box())
+                } else {
+                    match ProviderFactory::create(provider_config.clone()) {
+                        Ok(p) => {
+                            *cache = Some((provider_config.clone(), p.clone_box()));
+                            p
+                        }
+                        Err(e) => {
+                            self.circuit_breaker.record_failure();
+                            self.handle_ai_failure(image_id, task.retry_count, &e.to_string())
+                                .await;
+                            return;
+                        }
+                    }
+                }
+            } else {
+                match ProviderFactory::create(provider_config.clone()) {
+                    Ok(p) => {
+                        *cache = Some((provider_config.clone(), p.clone_box()));
+                        p
+                    }
+                    Err(e) => {
+                        self.circuit_breaker.record_failure();
+                        self.handle_ai_failure(image_id, task.retry_count, &e.to_string())
+                            .await;
+                        return;
+                    }
+                }
+            }
+        };
+
+        match provider.analyze_image(file_path).await {
                 Ok(result) => {
+                    self.circuit_breaker.record_success();
+
                     let tags_json = serde_json::to_string(&result.tags).unwrap_or_default();
 
                     let tag_status = self.determine_tag_status(
@@ -476,14 +527,10 @@ impl Worker {
                     );
                 }
                 Err(e) => {
+                    self.circuit_breaker.record_failure();
                     self.handle_ai_failure(image_id, task.retry_count, &e.to_string())
                         .await;
                 }
-            },
-            Err(e) => {
-                self.handle_ai_failure(image_id, task.retry_count, &e.to_string())
-                    .await;
-            }
         }
     }
 

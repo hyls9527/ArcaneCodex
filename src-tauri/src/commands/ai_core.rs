@@ -56,16 +56,19 @@ pub async fn load_ai_model(
     let path = custom_path.as_ref().map(|p| PathBuf::from(p));
 
     match state.onnx_manager.load_model(model_type, path.as_deref()).await {
-        Ok(config) => Ok(ModelLoadResult {
-            success: true,
-            model: Some(ModelStatus {
-                model_type: config.model_type.as_str().to_string(),
-                name: config.name,
-                is_loaded: true,
-                path: config.path.to_string_lossy().to_string(),
-            }),
-            error: None,
-        }),
+        Ok(config) => {
+            let _ = state.onnx_manager.warmup_model(model_type).await;
+            Ok(ModelLoadResult {
+                success: true,
+                model: Some(ModelStatus {
+                    model_type: config.model_type.as_str().to_string(),
+                    name: config.name,
+                    is_loaded: true,
+                    path: config.path.to_string_lossy().to_string(),
+                }),
+                error: None,
+            })
+        }
         Err(e) => Ok(ModelLoadResult {
             success: false,
             model: None,

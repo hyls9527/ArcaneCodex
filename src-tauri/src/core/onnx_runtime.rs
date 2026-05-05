@@ -269,6 +269,24 @@ impl OnnxRuntimeManager {
         sessions.contains_key(&model_type)
     }
 
+    pub async fn warmup_model(&self, model_type: ModelType) -> Result<()> {
+        let shape = model_type.input_shape();
+        let total_elements: usize = shape.iter().product();
+        let dummy_data = vec![0.0f32; total_elements];
+
+        for i in 0..3 {
+            match self.run_inference(model_type, &dummy_data, shape.clone()).await {
+                Ok(_) => tracing::info!(model = model_type.as_str(), round = i + 1, "warmup 完成"),
+                Err(e) => {
+                    tracing::warn!(model = model_type.as_str(), round = i + 1, error = %e, "warmup 失败");
+                }
+            }
+        }
+
+        tracing::info!(model = model_type.as_str(), "模型预热完成");
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub fn get_models_dir(&self) -> &Path {
         &self.models_dir

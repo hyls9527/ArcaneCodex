@@ -79,7 +79,7 @@ export function GalleryPage({
         addToast(t('gallery.importDuplicate', { count: result.duplicate_count }), 'info')
       }
       if (result.error_count > 0) {
-        addToast(t('gallery.importPartialError', { count: result.error_count }), 'warning')
+        addToast(t('gallery.importPartialError', { count: result.error_count }), 'error')
       }
 
       const hasSeenGuide = localStorage.getItem('has_seen_ai_guide')

@@ -3,11 +3,11 @@
 > **你的照片，就是记忆** | Your Photos, Your Memories
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI/CD](https://github.com/hyls9527/ArcaneCodex/actions/workflows/ci.yml/badge.svg)](https://github.com/hyls9527/ArcaneCodex/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)]()
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)]()
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)]()
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8DB.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-17%20files%20%7C%20mock%20based-yellow)]()
 
 
 ---
