@@ -554,7 +554,6 @@ impl Worker {
 
         use crate::core::inference::InferenceProviderType;
         let ptype = match provider_type.as_str() {
-            "zhipu" => InferenceProviderType::Zhipu,
             "openai" => InferenceProviderType::OpenAI,
             "openrouter" => InferenceProviderType::OpenRouter,
             "ollama" => InferenceProviderType::Ollama,

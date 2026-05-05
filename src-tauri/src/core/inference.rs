@@ -20,7 +20,6 @@ pub enum InferenceProviderType {
     Ollama,
     Hermes,
     OpenAI,
-    Zhipu,
     OpenRouter,
 }
 
@@ -83,16 +82,6 @@ impl ProviderFactory {
                 Ok(Box::new(OpenAIClient::new(
                     config.provider_type,
                     config.base_url,
-                    config.model,
-                    api_key,
-                    config.timeout_secs,
-                )?))
-            }
-            InferenceProviderType::Zhipu => {
-                let api_key = config
-                    .api_key
-                    .ok_or_else(|| AppError::validation("智谱 API 需要提供 API Key".to_string()))?;
-                Ok(Box::new(ZhipuProvider::new(
                     config.model,
                     api_key,
                     config.timeout_secs,
@@ -235,114 +224,6 @@ fn parse_ai_response(content: &str, provider: &str, model: &str) -> AppResult<AI
         provider: provider.to_string(),
         model: model.to_string(),
     })
-}
-
-pub struct ZhipuProvider {
-    client: reqwest::Client,
-    base_url: String,
-    model: String,
-    api_key: String,
-}
-
-impl ZhipuProvider {
-    pub fn new(model: String, api_key: String, timeout_secs: u64) -> AppResult<Self> {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(timeout_secs))
-            .build()
-            .map_err(|e| AppError::validation(format!("创建 HTTP 客户端失败: {}", e)))?;
-        Ok(Self {
-            client,
-            base_url: "https://open.bigmodel.cn".to_string(),
-            model,
-            api_key,
-        })
-    }
-
-    #[cfg(test)]
-    pub fn with_base_url(
-        model: String,
-        api_key: String,
-        base_url: String,
-        timeout_secs: u64,
-    ) -> AppResult<Self> {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(timeout_secs))
-            .build()
-            .map_err(|e| AppError::validation(format!("创建 HTTP 客户端失败: {}", e)))?;
-        Ok(Self {
-            client,
-            base_url,
-            model,
-            api_key,
-        })
-    }
-}
-
-#[async_trait]
-impl InferenceProvider for ZhipuProvider {
-    fn name(&self) -> &str {
-        "zhipu"
-    }
-    fn model(&self) -> &str {
-        &self.model
-    }
-
-    async fn analyze_image(&self, image_path: &str) -> AppResult<AIResult> {
-        let image_base64 = encode_image_to_base64(image_path)?;
-        let mime_type = detect_mime_type(image_path)?;
-        let prompt = build_prompt();
-
-        let request_body = serde_json::json!({
-            "model": self.model,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    { "type": "text", "text": prompt },
-                    { "type": "image_url", "image_url": { "url": format!("data:{};base64,{}", mime_type, image_base64) } }
-                ]
-            }],
-            "max_tokens": 500,
-            "temperature": 0.1
-        });
-
-        let resp = self
-            .client
-            .post(format!("{}/api/paas/v4/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| AppError::validation(format!("智谱 AI 推理请求失败: {}", e)))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::validation(format!(
-                "智谱 AI 推理失败: HTTP {} - {}",
-                status, body
-            )));
-        }
-
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| AppError::validation(format!("解析智谱 AI 响应失败: {}", e)))?;
-
-        let content = body
-            .get("choices")
-            .and_then(|c| c.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|choice| choice.get("message"))
-            .and_then(|msg| msg.get("content"))
-            .and_then(|c| c.as_str())
-            .ok_or_else(|| AppError::validation("智谱 AI 响应格式不正确".to_string()))?;
-
-        parse_ai_response(content, "zhipu", &self.model)
-    }
-
-    async fn health_check(&self) -> AppResult<Vec<String>> {
-        Ok(vec![self.model.clone()])
-    }
 }
 
 pub struct OpenAIClient {
@@ -764,17 +645,6 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_factory_zhipu_no_key() {
-        let config = ProviderConfig {
-            provider_type: InferenceProviderType::Zhipu,
-            model: "glm-4v-flash".to_string(),
-            ..Default::default()
-        };
-        let provider = ProviderFactory::create(config);
-        assert!(provider.is_err());
-    }
-
-    #[test]
     fn test_provider_factory_openai_no_key() {
         let config = ProviderConfig {
             provider_type: InferenceProviderType::OpenAI,
@@ -844,146 +714,6 @@ mod tests {
         // 验证模型名称传递正确
         assert_eq!(hermes_provider.model(), "test-model");
         assert_eq!(lm_provider.model(), "test-model");
-    }
-
-    #[test]
-    fn test_zhipu_provider_creation() {
-        // 测试智谱 Provider 创建
-        let provider =
-            ZhipuProvider::new("glm-4v-flash".to_string(), "test-api-key".to_string(), 60);
-        assert!(provider.is_ok());
-
-        let provider = provider.unwrap();
-        assert_eq!(provider.name(), "zhipu");
-        assert_eq!(provider.model(), "glm-4v-flash");
-    }
-
-    #[test]
-    fn test_zhipu_provider_request_format() {
-        // 验证智谱 API 请求格式构造
-        // 智谱使用 OpenAI 兼容格式，但有自己的认证方式
-        let provider =
-            ZhipuProvider::new("glm-4v-flash".to_string(), "test-api-key".to_string(), 60).unwrap();
-
-        // 验证基本属性
-        assert_eq!(provider.name(), "zhipu");
-        assert_eq!(provider.model(), "glm-4v-flash");
-
-        // 注意：实际的 HTTP 请求测试需要 mock 服务器
-        // 这里验证 Provider 能正确创建和配置
-    }
-
-    #[tokio::test]
-    async fn test_zhipu_analyze_image_mock() {
-        let mut server = mockito::Server::new_async().await;
-        let mock_url = server.url();
-
-        let mock_response = serde_json::json!({
-            "choices": [{
-                "message": {
-                    "content": "{\"description\":\"一只猫\",\"category\":\"动物\",\"tags\":[\"猫\",\"宠物\"],\"confidence\":0.95}"
-                }
-            }]
-        });
-
-        let _mock = server
-            .mock("POST", "/api/paas/v4/chat/completions")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(mock_response.to_string())
-            .create_async()
-            .await;
-
-        let provider = ZhipuProvider::with_base_url(
-            "glm-4v-flash".to_string(),
-            "test-api-key".to_string(),
-            mock_url,
-            60,
-        )
-        .unwrap();
-
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let img_path = tmp_dir.path().join("test.png");
-        create_minimal_png(&img_path);
-
-        let result = provider.analyze_image(img_path.to_str().unwrap()).await;
-        assert!(result.is_ok());
-        let ai_result = result.unwrap();
-        assert_eq!(ai_result.description, "一只猫");
-        assert_eq!(ai_result.category, "动物");
-        assert_eq!(ai_result.tags, vec!["猫", "宠物"]);
-        assert!((ai_result.confidence - 0.95).abs() < 0.001);
-    }
-
-    #[tokio::test]
-    async fn test_zhipu_analyze_image_error_401() {
-        let mut server = mockito::Server::new_async().await;
-        let mock_url = server.url();
-
-        let _mock = server
-            .mock("POST", "/api/paas/v4/chat/completions")
-            .with_status(401)
-            .with_body("Unauthorized")
-            .create_async()
-            .await;
-
-        let provider = ZhipuProvider::with_base_url(
-            "glm-4v-flash".to_string(),
-            "test-api-key".to_string(),
-            mock_url,
-            60,
-        )
-        .unwrap();
-
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let img_path = tmp_dir.path().join("test.png");
-        create_minimal_png(&img_path);
-
-        let result = provider.analyze_image(img_path.to_str().unwrap()).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("401"), "Expected 401 error, got: {}", err);
-    }
-
-    #[tokio::test]
-    async fn test_zhipu_analyze_image_error_500() {
-        let mut server = mockito::Server::new_async().await;
-        let mock_url = server.url();
-
-        let _mock = server
-            .mock("POST", "/api/paas/v4/chat/completions")
-            .with_status(500)
-            .with_body("Internal Server Error")
-            .create_async()
-            .await;
-
-        let provider = ZhipuProvider::with_base_url(
-            "glm-4v-flash".to_string(),
-            "test-api-key".to_string(),
-            mock_url,
-            60,
-        )
-        .unwrap();
-
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let img_path = tmp_dir.path().join("test.png");
-        create_minimal_png(&img_path);
-
-        let result = provider.analyze_image(img_path.to_str().unwrap()).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("500"), "Expected 500 error, got: {}", err);
-    }
-
-    #[test]
-    fn test_zhipu_health_check() {
-        // 测试智谱 Provider 的健康检查
-        let provider =
-            ZhipuProvider::new("glm-4v-flash".to_string(), "test-api-key".to_string(), 60).unwrap();
-
-        // health_check 是 async 方法，需要 tokio runtime
-        // 这里只验证 Provider 能正确创建
-        assert_eq!(provider.name(), "zhipu");
     }
 
     #[test]

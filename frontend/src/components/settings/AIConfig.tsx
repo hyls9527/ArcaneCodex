@@ -8,8 +8,6 @@ import { invoke } from '@tauri-apps/api/core'
 const PROVIDER_OPTIONS = [
   { value: 'lm_studio', label: 'LM Studio', type: 'local', defaultUrl: 'http://127.0.0.1:1234', defaultModel: 'Qwen2.5-VL-7B-Instruct' },
   { value: 'ollama', label: 'Ollama', type: 'local', defaultUrl: 'http://127.0.0.1:11434', defaultModel: 'llava:7b' },
-  { value: 'hermes', label: 'Hermes One-Click', type: 'local', defaultUrl: 'http://127.0.0.1:18789', defaultModel: 'Qwen2.5-VL-7B-Instruct' },
-  { value: 'zhipu', label: '智谱 GLM-4-Flash', type: 'cloud', defaultUrl: '', defaultModel: 'glm-4v-flash' },
   { value: 'openai', label: 'OpenAI', type: 'cloud', defaultUrl: '', defaultModel: 'gpt-4o' },
   { value: 'openrouter', label: 'OpenRouter', type: 'cloud', defaultUrl: '', defaultModel: '' },
 ]
@@ -91,7 +89,7 @@ export function AIConfig({ onChange }: { onChange?: () => void }) {
   }
 
   const handleTestConnection = async () => {
-    if (!isValidUrl(lmStudioUrl) && provider !== 'zhipu' && provider !== 'openai' && provider !== 'openrouter') {
+    if (!isValidUrl(lmStudioUrl) && provider !== 'openai' && provider !== 'openrouter') {
       setTestResult('error')
       setUrlValidationError(t('settings.ai.urlInvalidTest'))
       return

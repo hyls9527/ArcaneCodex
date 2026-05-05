@@ -75,7 +75,6 @@ pub async fn set_inference_provider(
         "lm_studio" => InferenceProviderType::LMStudio,
         "ollama" => InferenceProviderType::Ollama,
         "hermes" => InferenceProviderType::Hermes,
-        "zhipu" => InferenceProviderType::Zhipu,
         "openai" => InferenceProviderType::OpenAI,
         "openrouter" => InferenceProviderType::OpenRouter,
         _ => {
@@ -143,7 +142,6 @@ pub async fn test_inference_connection(db: State<'_, Database>) -> AppResult<Str
         .filter(|k| !k.is_empty());
 
     let ptype = match provider_type.as_str() {
-        "zhipu" => InferenceProviderType::Zhipu,
         "openai" => InferenceProviderType::OpenAI,
         "openrouter" => InferenceProviderType::OpenRouter,
         _ => InferenceProviderType::LMStudio,
@@ -203,19 +201,19 @@ mod tests {
         assert!(matches!(
             match "lm_studio" {
                 "lm_studio" => InferenceProviderType::LMStudio,
-                "zhipu" => InferenceProviderType::Zhipu,
+                "openai" => InferenceProviderType::OpenAI,
                 _ => InferenceProviderType::LMStudio,
             },
             InferenceProviderType::LMStudio
         ));
 
         assert!(matches!(
-            match "zhipu" {
+            match "openai" {
                 "lm_studio" => InferenceProviderType::LMStudio,
-                "zhipu" => InferenceProviderType::Zhipu,
+                "openai" => InferenceProviderType::OpenAI,
                 _ => InferenceProviderType::LMStudio,
             },
-            InferenceProviderType::Zhipu
+            InferenceProviderType::OpenAI
         ));
     }
 }
