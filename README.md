@@ -7,8 +7,8 @@
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)]()
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)]()
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8DB.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-223%20passing-brightgreen)]()
-[![Code Quality](https://img.shields.io/badge/Code%20Quality-A-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-17%20files%20%7C%20mock%20based-yellow)]()
+
 
 ---
 
@@ -16,16 +16,16 @@
 
 试过各种工具。系统相册只能按时间排序，云相册要把照片传到别人的服务器上，专业 DAM 软件贵得离谱还不好用。
 
-所以写了 Arcane Codex。它用 AI 理解照片内容，用自然语言找到你想要的那一张，全部运行在本地——你的照片从来不离开你的硬盘。
+所以写了 Arcane Codex。它用本地 AI 分析照片内容生成标签和描述，通过关键词搜索找到你想要的那一张——你的照片从来不离开你的硬盘。
 
 ## ✨ 核心特性
 
 | 特性 | 说明 |
 |------|------|
 | 🔒 **本地优先** | 所有数据存储和处理都在本地完成，无需上传，无需联网 |
-| 🤖 **AI 理解内容** | 不是文件名搜索，是真正理解画面——"那只橘猫"、"去年夏天的海边" |
-| 🔍 **智能去重** | BK-Tree + 感知哈希，几万张图片依然流畅 |
-| 💬 **语义搜索** | 自然语言查询，不是关键词匹配 |
+| 🤖 **AI 内容分析** | 基于本地 AI 模型生成描述和标签，支持关键词搜索 |
+| 🔍 **智能去重** | BK-Tree + 感知哈希，支持相似图片检测 |
+| 💬 **语义搜索** | 基于中文分词的关键词搜索，支持自然语言查询 |
 | 🛡️ **隐私无忧** | 照片不上传，标签不上传，一切都在你的硬盘上 |
 
 ## 🎯 AI 打标效果
@@ -90,7 +90,7 @@ npm run tauri build
 | 数据库 | SQLite (WAL) | 零配置、单文件、可靠 |
 | AI | OpenAI 兼容 API | 接入任何 LLM 服务 |
 | 状态管理 | Zustand | 轻量、无 boilerplate |
-| 测试 | Vitest + Cargo test | 223 个前端测试 + Rust 内联测试 |
+| 测试 | Vitest + Cargo test | 17 个前端测试文件（基于 mock） |
 
 ## 🔐 隐私保护
 
@@ -107,18 +107,18 @@ Arcane Codex 的设计哲学是**本地优先**：
 | 功能 | 状态 | 说明 |
 |------|------|------|
 | 批量导入 | ✅ | 拖拽文件夹，递归扫描 |
-| AI 自动打标 | ✅ | 支持 6 种 LLM 后端 |
-| 语义搜索 | ✅ | 自然语言查询 |
+| AI 自动打标 | ✅ | 支持多种 LLM 后端（需配置） |
+| 语义搜索 | ✅ | 基于中文分词的关键词搜索 |
 | 重复检测 | ✅ | BK-Tree + 感知哈希 |
-| EXIF 提取 | ✅ | 拍摄时间、相机型号、GPS |
-| 图片归档 | ✅ | 标记归档，不删除 |
-| 安全导出 | ✅ | 导出到指定目录 |
-| 数据备份/恢复 | ✅ | SQLite 数据库备份 |
-| 中英双语 | ✅ | i18n 完整支持 |
+| EXIF 提取 | ✅ | 拍摄时间、相机型号等（如有） |
+| 图片归档 | ✅ | 标记归档，不删除原文件 |
+| 安全导出 | ✅ | 复制到指定目录 |
+| 数据备份/恢复 | ⚠️ | 基础功能存在，待完善 |
+| 中英双语 | ✅ | i18n 支持（部分文案硬编码） |
 | 暗黑/明亮主题 | ✅ | 跟随系统或手动切换 |
-| 键盘快捷键 | ✅ | / 搜索、Esc 关闭、d 切换主题 |
-| 仪表盘统计 | ✅ | 分类分布、准确率趋势 |
-| HEIC/HEIF | ❌ | 暂不支持，需先转换格式 |
+| 键盘快捷键 | ⚠️ | / 搜索、Esc 关闭，部分待实现 |
+| 仪表盘统计 | ✅ | 基础统计信息 |
+| HEIC/HEIF | ❌ | MIME 类型已注册但解码不支持，需先转换格式 |
 | macOS/Linux | ❌ | 暂仅支持 Windows |
 
 ## 📁 项目结构
@@ -144,6 +144,16 @@ ArcaneCodex/
 │   │   ├── core/         # 核心逻辑
 │   │   └── utils/        # 工具函数
 │   └── Cargo.toml
+├── tools/                # 工具脚本和 CLI
+│   ├── scripts/          # PowerShell 构建流水线
+│   │   ├── pipeline.ps1  # 完整构建流水线
+│   │   ├── auto-test.ps1 # 自动化测试
+│   │   ├── fast-check.ps1# 快速检查
+│   │   ├── ui-test.ps1   # UI 自动化测试
+│   │   └── sandbox-setup.ps1 # 沙盒环境设置
+│   └── cli/              # Python CLI 工具
+│       ├── arcanecodex.py
+│       └── setup.py
 └── package.json          # 根配置
 ```
 
