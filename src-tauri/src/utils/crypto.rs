@@ -66,18 +66,18 @@ pub fn decrypt_api_key(ciphertext: &str) -> String {
                 let ciphertext_only = &data[12..];
                 match cipher.decrypt(nonce, ciphertext_only) {
                     Ok(plaintext) => String::from_utf8(plaintext).unwrap_or_else(|e| {
-                        warn!("API Key 解密 UTF-8 转换失败: {}", e);
-                        ciphertext.to_string()
+                        warn!("API Key 解密 UTF-8 转换失败，已返回空值: {}", e);
+                        String::new()
                     }),
                     Err(e) => {
-                        warn!("API Key 解密失败，可能密钥已变更: {}", e);
-                        ciphertext.to_string()
+                        warn!("API Key 解密失败，已返回空值，请重新配置 API Key: {}", e);
+                        String::new()
                     }
                 }
             }
             _ => {
-                warn!("API Key v2 格式无效");
-                ciphertext.to_string()
+                warn!("API Key v2 格式无效，已返回空值");
+                String::new()
             }
         }
     } else if ciphertext.starts_with(ENCRYPTION_PREFIX_V1) {
@@ -89,17 +89,17 @@ pub fn decrypt_api_key(ciphertext: &str) -> String {
         match BASE64.decode(encoded) {
             Ok(data) => match cipher.decrypt(nonce, data.as_ref()) {
                 Ok(plaintext) => String::from_utf8(plaintext).unwrap_or_else(|e| {
-                    warn!("API Key v1 解密 UTF-8 转换失败: {}", e);
-                    ciphertext.to_string()
+                    warn!("API Key v1 解密 UTF-8 转换失败，已返回空值: {}", e);
+                    String::new()
                 }),
                 Err(e) => {
-                    warn!("API Key v1 解密失败，可能密钥已变更: {}", e);
-                    ciphertext.to_string()
+                    warn!("API Key v1 解密失败，已返回空值，请重新配置 API Key: {}", e);
+                    String::new()
                 }
             },
             Err(e) => {
-                warn!("API Key v1 Base64 解码失败: {}", e);
-                ciphertext.to_string()
+                warn!("API Key v1 Base64 解码失败，已返回空值: {}", e);
+                String::new()
             }
         }
     } else {
@@ -140,6 +140,17 @@ mod tests {
         let plaintext = "my-plain-api-key";
         let decrypted = decrypt_api_key(plaintext);
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_decrypt_v2_with_wrong_key_returns_empty() {
+        let original = "sk-test-key-for-wrong-key-scenario";
+        let encrypted = encrypt_api_key(original);
+        assert!(encrypted.starts_with(ENCRYPTION_PREFIX_V2));
+
+        let tampered = encrypted.replace(ENCRYPTION_PREFIX_V2, "enc:v2:invalidbase64!!!");
+        let decrypted = decrypt_api_key(&tampered);
+        assert_eq!(decrypted, "", "密钥变更或密文损坏时应返回空字符串");
     }
 
     #[test]

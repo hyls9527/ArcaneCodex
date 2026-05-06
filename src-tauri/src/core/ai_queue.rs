@@ -444,7 +444,7 @@ impl Worker {
             let mut cache = self.cached_provider.lock().await;
             if let Some((ref cached_config, ref provider)) = *cache {
                 if *cached_config == provider_config {
-                    ProviderFactory::create(provider_config.clone()).unwrap_or_else(|_| provider.clone_box())
+                    provider.clone_box()
                 } else {
                     match ProviderFactory::create(provider_config.clone()) {
                         Ok(p) => {
