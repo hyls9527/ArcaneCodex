@@ -521,6 +521,16 @@ impl Worker {
 
                     self.processed_tasks.fetch_add(1, Ordering::SeqCst);
                     self.emit_progress(image_id, "completed", &result.description);
+
+                    if let Err(e) = self.record_calibration_sample(
+                        image_id,
+                        &result.category,
+                        result.confidence,
+                        &tag_status,
+                    ) {
+                        warn!("记录校准样本失败 (image_id={}): {}", image_id, e);
+                    }
+
                     info!(
                         "Worker {} 完成 image_id={}, provider={}, tag_status={}",
                         self.worker_id, image_id, result.provider, tag_status
@@ -749,6 +759,40 @@ impl Worker {
                 },
             );
         }
+    }
+
+    fn record_calibration_sample(
+        &self,
+        image_id: i64,
+        category: &str,
+        confidence: f64,
+        tag_status: &str,
+    ) -> Result<(), String> {
+        use crate::core::calibration::CalibrationEngine;
+
+        let is_correct = match tag_status {
+            "verified" => true,
+            "rejected" => false,
+            "provisional" => confidence >= 0.7,
+            other => {
+                debug!(
+                    "未知 tag_status='{}'，按 confidence>=0.7 判定 (image_id={})",
+                    other, image_id
+                );
+                confidence >= 0.7
+            }
+        };
+
+        let engine = CalibrationEngine::new(self.db.clone());
+        engine
+            .add_sample(image_id, category, confidence, is_correct)
+            .map_err(|e| e.to_string())?;
+
+        debug!(
+            "校准样本已自动记录: image_id={}, category={}, confidence={:.3}, tag_status={}, is_correct={}",
+            image_id, category, confidence, tag_status, is_correct
+        );
+        Ok(())
     }
 }
 

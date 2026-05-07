@@ -120,6 +120,11 @@ fn main() {
             commands::knowledge_graph::kg_clear,
             commands::knowledge_graph::kg_load_from_db,
             commands::knowledge_graph::kg_save_to_db,
+            // Calibration Commands
+            commands::calibration::record_calibration_sample,
+            commands::calibration::calculate_and_save_calibration,
+            commands::calibration::get_latest_calibration_report,
+            commands::calibration::get_calibration_curve_data,
         ])
         .setup(|app| {
             let (tx, _rx) = tokio::sync::broadcast::channel(256);

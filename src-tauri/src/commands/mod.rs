@@ -3,6 +3,7 @@
 pub mod ai;
 pub mod ai_core;
 pub mod batch_ops;
+pub mod calibration;
 pub mod dedup;
 pub mod error_patterns;
 pub mod export;

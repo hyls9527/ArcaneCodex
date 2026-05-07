@@ -168,36 +168,7 @@ impl Serialize for AppError {
 }
 
 pub fn init_logging() {
-    use tracing_subscriber::{fmt, EnvFilter};
-
-    let log_dir = std::env::var("APPDATA")
-        .map(|appdata| format!("{}\\ArcaneCodex\\logs", appdata))
-        .unwrap_or_else(|_| "./logs".to_string());
-
-    std::fs::create_dir_all(&log_dir).ok();
-
-    let log_file = format!("{}\\app.log", log_dir);
-    let file_writer = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_file)
-        .ok();
-
-    if let Some(writer) = file_writer {
-        fmt()
-            .with_env_filter(
-                EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()),
-            )
-            .with_writer(writer)
-            .with_ansi(false)
-            .init();
-    } else {
-        fmt()
-            .with_env_filter(
-                EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()),
-            )
-            .init();
-    }
+    crate::utils::log_sanitizer::init_sanitized_logging();
 }
 
 #[cfg(test)]

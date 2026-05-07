@@ -2,6 +2,7 @@
 
 pub mod ai_queue;
 pub mod bk_tree;
+pub mod calibration;
 pub mod circuit_breaker;
 pub mod clip_embedder;
 pub mod consistency_checker;
