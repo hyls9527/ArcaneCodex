@@ -4,8 +4,21 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::core::clip_embedder::ClipEmbedder;
-use crate::core::vector_index::HnswVectorIndex;
 use crate::core::db::Database;
+use crate::core::vector_index::HnswVectorIndex;
+
+type AdjacencyMap = Arc<tokio::sync::RwLock<HashMap<String, HashSet<(String, String)>>>>;
+type NodeMap = Arc<tokio::sync::RwLock<HashMap<String, GraphNode>>>;
+type EdgeMap = Arc<tokio::sync::RwLock<HashMap<String, GraphEdge>>>;
+type CommunityList = Arc<tokio::sync::RwLock<Vec<GraphCommunity>>>;
+type ImageDataRow = (
+    i64,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EdgeType {
@@ -29,7 +42,7 @@ impl EdgeType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_str_name(s: &str) -> Self {
         match s {
             "semantic" => EdgeType::SemanticSimilarity,
             "tag_overlap" => EdgeType::TagOverlap,
@@ -123,10 +136,10 @@ pub struct KnowledgeGraphEngine {
     clip_embedder: Arc<ClipEmbedder>,
     #[allow(dead_code)]
     vector_index: Arc<HnswVectorIndex>,
-    nodes: Arc<tokio::sync::RwLock<HashMap<String, GraphNode>>>,
-    edges: Arc<tokio::sync::RwLock<HashMap<String, GraphEdge>>>,
-    adjacency: Arc<tokio::sync::RwLock<HashMap<String, HashSet<(String, String)>>>>,
-    communities: Arc<tokio::sync::RwLock<Vec<GraphCommunity>>>,
+    nodes: NodeMap,
+    edges: EdgeMap,
+    adjacency: AdjacencyMap,
+    communities: CommunityList,
     #[allow(dead_code)]
     edge_thresholds: HashMap<EdgeType, f32>,
 }
@@ -161,7 +174,7 @@ impl KnowledgeGraphEngine {
 
         let conn = self.db.open_connection().map_err(|e| e.to_string())?;
 
-        let image_data: Vec<(i64, String, Option<String>, Option<String>, Option<String>, Option<String>)> = conn
+        let image_data: Vec<ImageDataRow> = conn
             .prepare("SELECT id, file_path, ai_tags, ai_description, ai_category, ai_status FROM images WHERE ai_status IN ('verified', 'provisional', 'completed')")
             .map_err(|e| e.to_string())?
             .query_map([], |row| {
@@ -183,7 +196,6 @@ impl KnowledgeGraphEngine {
         let mut added = 0usize;
 
         for (image_id, file_path, tags_json, description, category, ai_status) in image_data {
-
             let node_id = format!("img_{}", image_id);
 
             let tags: Vec<String> = tags_json
@@ -206,7 +218,9 @@ impl KnowledgeGraphEngine {
                 props.insert("tags".into(), serde_json::json!(tags.clone()));
             }
 
-            let embedding = self.generate_node_embedding(&file_path, &description, &tags).await;
+            let embedding = self
+                .generate_node_embedding(&file_path, &description, &tags)
+                .await;
 
             let node = GraphNode {
                 id: node_id.clone(),
@@ -230,7 +244,8 @@ impl KnowledgeGraphEngine {
         tracing::info!("已添加 {} 个图像节点到知识图谱", added);
 
         self.build_tag_nodes().await?;
-        self.discover_semantic_edges(EdgeType::SemanticSimilarity, 0.7).await?;
+        self.discover_semantic_edges(EdgeType::SemanticSimilarity, 0.7)
+            .await?;
         self.discover_tag_edges().await?;
         self.detect_communities().await?;
         self.update_degrees().await;
@@ -356,12 +371,7 @@ impl KnowledgeGraphEngine {
                         let similarity = Self::cosine_similarity(&a, &b);
                         if similarity >= threshold {
                             let edge = GraphEdge {
-                                id: format!(
-                                    "{}-{}-{}",
-                                    id_a,
-                                    id_b,
-                                    edge_type.as_str()
-                                ),
+                                id: format!("{}-{}-{}", id_a, id_b, edge_type.as_str()),
                                 source_id: id_a.clone(),
                                 target_id: id_b.clone(),
                                 edge_type,
@@ -455,10 +465,7 @@ impl KnowledgeGraphEngine {
                             let tag_node_id = format!("tag_{}", tag_str);
                             if nodes.contains_key(&tag_node_id) {
                                 let edge = GraphEdge {
-                                    id: format!(
-                                        "{}-{}-tag",
-                                        img_node.id, tag_node_id
-                                    ),
+                                    id: format!("{}-{}-tag", img_node.id, tag_node_id),
                                     source_id: img_node.id.clone(),
                                     target_id: tag_node_id,
                                     edge_type: EdgeType::TagOverlap,
@@ -629,22 +636,19 @@ impl KnowledgeGraphEngine {
         if let Some(neighbors) = adjacency.get(node_id) {
             for (neighbor_id, edge_type_str) in neighbors.iter() {
                 if let Some(filter) = edge_filter {
-                    let et = EdgeType::from_str(edge_type_str);
+                    let et = EdgeType::from_str_name(edge_type_str);
                     if !filter.contains(&et) {
                         continue;
                     }
                 }
 
                 if let Some(node) = nodes.get(neighbor_id) {
-                    let edge_id = format!(
-                        "{}-{}-{}",
-                        node_id, neighbor_id, edge_type_str
-                    );
+                    let edge_id = format!("{}-{}-{}", node_id, neighbor_id, edge_type_str);
                     let edge = edges.get(&edge_id).cloned().unwrap_or(GraphEdge {
                         id: edge_id.clone(),
                         source_id: node_id.to_string(),
                         target_id: neighbor_id.clone(),
-                        edge_type: EdgeType::from_str(edge_type_str),
+                        edge_type: EdgeType::from_str_name(edge_type_str),
                         weight: 0.0,
                         properties: serde_json::json!({}),
                     });
@@ -666,16 +670,17 @@ impl KnowledgeGraphEngine {
             results.truncate(limit);
         }
 
-        results.sort_by(|a, b| b.edge.weight.partial_cmp(&a.edge.weight).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.edge
+                .weight
+                .partial_cmp(&a.edge.weight)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         results
     }
 
-    pub async fn find_shortest_path(
-        &self,
-        source_id: &str,
-        target_id: &str,
-    ) -> Option<GraphPath> {
+    pub async fn find_shortest_path(&self, source_id: &str, target_id: &str) -> Option<GraphPath> {
         let adjacency = self.adjacency.read().await;
         let nodes = self.nodes.read().await;
         let edges = self.edges.read().await;
@@ -705,10 +710,7 @@ impl KnowledgeGraphEngine {
             if let Some(neighbors) = adjacency.get(&current) {
                 for (neighbor_id, edge_type) in neighbors.iter() {
                     if !visited.contains_key(neighbor_id) {
-                        visited.insert(
-                            neighbor_id.clone(),
-                            (current.clone(), edge_type.clone()),
-                        );
+                        visited.insert(neighbor_id.clone(), (current.clone(), edge_type.clone()));
                         queue.push_back(neighbor_id.clone());
                     }
                 }
@@ -897,7 +899,7 @@ impl KnowledgeGraphEngine {
                 node.node_type.as_str(),
                 &node.label,
                 &props_json,
-                &emb_json.as_deref().unwrap_or("null"),
+                emb_json.as_deref().unwrap_or("null"),
                 &node.community_id.map(|c| c.to_string()).unwrap_or_default(),
                 &node.degree.to_string(),
             ])
@@ -948,7 +950,12 @@ impl KnowledgeGraphEngine {
         drop(stmt);
 
         let total = nodes.len() + edges.len() + communities.len();
-        tracing::info!("知识图谱已保存到数据库: {} 节点, {} 边, {} 社区", nodes.len(), edges.len(), communities.len());
+        tracing::info!(
+            "知识图谱已保存到数据库: {} 节点, {} 边, {} 社区",
+            nodes.len(),
+            edges.len(),
+            communities.len()
+        );
 
         Ok(total)
     }
@@ -980,7 +987,8 @@ impl KnowledgeGraphEngine {
                     _ => NodeType::Concept,
                 };
                 let props_json: String = row.get(3)?;
-                let properties: serde_json::Value = serde_json::from_str(&props_json).unwrap_or(serde_json::json!({}));
+                let properties: serde_json::Value =
+                    serde_json::from_str(&props_json).unwrap_or(serde_json::json!({}));
                 let emb_json: String = row.get(4)?;
                 let embedding: Option<Vec<f32>> = serde_json::from_str(&emb_json).ok();
                 let community_id: Option<i64> = row.get(5)?;
@@ -1008,15 +1016,18 @@ impl KnowledgeGraphEngine {
         drop(stmt);
 
         let mut stmt = conn
-            .prepare("SELECT id, source_id, target_id, edge_type, weight, properties_json FROM kg_edges")
+            .prepare(
+                "SELECT id, source_id, target_id, edge_type, weight, properties_json FROM kg_edges",
+            )
             .map_err(|e| e.to_string())?;
 
         let edge_rows = stmt
             .query_map([], |row| {
                 let edge_type_str: String = row.get(3)?;
-                let edge_type = EdgeType::from_str(&edge_type_str);
+                let edge_type = EdgeType::from_str_name(&edge_type_str);
                 let props_json: String = row.get(5)?;
-                let properties: serde_json::Value = serde_json::from_str(&props_json).unwrap_or(serde_json::json!({}));
+                let properties: serde_json::Value =
+                    serde_json::from_str(&props_json).unwrap_or(serde_json::json!({}));
                 let weight: f64 = row.get(4)?;
 
                 Ok(GraphEdge {
@@ -1032,7 +1043,12 @@ impl KnowledgeGraphEngine {
 
         let mut edge_count = 0usize;
         for edge in edge_rows.filter_map(|r| r.ok()) {
-            let edge_key = format!("{}-{}-{}", edge.source_id, edge.target_id, edge.edge_type.as_str());
+            let edge_key = format!(
+                "{}-{}-{}",
+                edge.source_id,
+                edge.target_id,
+                edge.edge_type.as_str()
+            );
             adjacency
                 .entry(edge.source_id.clone())
                 .or_insert_with(HashSet::new)
@@ -1073,7 +1089,12 @@ impl KnowledgeGraphEngine {
             comm_count += 1;
         }
 
-        tracing::info!("从数据库加载知识图谱: {} 节点, {} 边, {} 社区", node_count, edge_count, comm_count);
+        tracing::info!(
+            "从数据库加载知识图谱: {} 节点, {} 边, {} 社区",
+            node_count,
+            edge_count,
+            comm_count
+        );
 
         Ok(node_count + edge_count + comm_count)
     }

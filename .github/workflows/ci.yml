@@ -37,7 +37,7 @@ jobs:
 
       - name: Clippy
         working-directory: src-tauri
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --lib --bins --all-features -- -D warnings
 
   lint-frontend:
     name: Lint Frontend

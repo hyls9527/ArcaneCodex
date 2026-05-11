@@ -11,15 +11,15 @@ mod core;
 mod models;
 mod utils;
 
+use crate::core::clip_embedder::ClipEmbedder;
+use crate::core::face_detector::FaceDetector;
+use crate::core::file_watcher::FileWatcherService;
+use crate::core::image_classifier::ImageClassifier;
+use crate::core::knowledge_graph::KnowledgeGraphEngine;
+use crate::core::onnx_runtime::OnnxRuntimeManager;
+use crate::core::vector_index::HnswVectorIndex;
 use std::sync::Arc;
 use tauri::Manager;
-use crate::core::file_watcher::FileWatcherService;
-use crate::core::onnx_runtime::OnnxRuntimeManager;
-use crate::core::image_classifier::ImageClassifier;
-use crate::core::face_detector::FaceDetector;
-use crate::core::clip_embedder::ClipEmbedder;
-use crate::core::vector_index::HnswVectorIndex;
-use crate::core::knowledge_graph::KnowledgeGraphEngine;
 
 fn main() {
     // 初始化日志系统
@@ -133,18 +133,10 @@ fn main() {
             });
 
             let app_handle = app.handle();
-            let db = core::db::Database::new(app_handle).map_err(|e| {
-                tauri::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ))
-            })?;
-            db.run_migrations().map_err(|e| {
-                tauri::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ))
-            })?;
+            let db = core::db::Database::new(app_handle)
+                .map_err(|e| tauri::Error::Io(std::io::Error::other(e.to_string())))?;
+            db.run_migrations()
+                .map_err(|e| tauri::Error::Io(std::io::Error::other(e.to_string())))?;
 
             if let Err(e) = commands::seed_data::seed_if_empty(&db) {
                 tracing::warn!("Failed to seed sample data: {}", e);
@@ -197,9 +189,7 @@ fn main() {
                 clip_embedder,
                 vector_index,
             ));
-            app.manage(commands::knowledge_graph::KgState {
-                engine: kg_engine,
-            });
+            app.manage(commands::knowledge_graph::KgState { engine: kg_engine });
 
             Ok(())
         })

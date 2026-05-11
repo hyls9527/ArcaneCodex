@@ -106,16 +106,11 @@ impl FaceDetector {
 
         let result = self
             .runtime_manager
-            .run_inference(
-                ModelType::FaceDetection,
-                &input_data,
-                vec![1, 3, 640, 640],
-            )
+            .run_inference(ModelType::FaceDetection, &input_data, vec![1, 3, 640, 640])
             .await
             .map_err(|e| FaceError::InferenceFailed(e.to_string()))?;
 
-        let faces =
-            self.parse_detection_result(&result, original_size, confidence_threshold)?;
+        let faces = self.parse_detection_result(&result, original_size, confidence_threshold)?;
 
         if faces.is_empty() {
             return Err(FaceError::NoFacesDetected);
@@ -134,9 +129,7 @@ impl FaceDetector {
             .is_model_loaded(ModelType::FaceRecognition)
             .await
         {
-            return Err(FaceError::ModelNotLoaded(
-                "face_recognition".to_string(),
-            ));
+            return Err(FaceError::ModelNotLoaded("face_recognition".to_string()));
         }
 
         let img = image::open(image_path)?;
@@ -192,9 +185,7 @@ impl FaceDetector {
         face_bbox: &BoundingBox,
         threshold: f32,
     ) -> FaceResult<Option<FaceMatch>> {
-        let query_embedding = self
-            .extract_face_embedding(image_path, face_bbox)
-            .await?;
+        let query_embedding = self.extract_face_embedding(image_path, face_bbox).await?;
 
         let embeddings = self.face_embeddings.read().await;
 
@@ -202,10 +193,8 @@ impl FaceDetector {
         let mut best_similarity = 0.0f32;
 
         for (face_id, stored_embedding) in embeddings.iter() {
-            let similarity = Self::cosine_similarity(
-                &query_embedding.embedding,
-                &stored_embedding.embedding,
-            );
+            let similarity =
+                Self::cosine_similarity(&query_embedding.embedding, &stored_embedding.embedding);
 
             if similarity > best_similarity && similarity >= threshold {
                 best_similarity = similarity;
@@ -267,9 +256,7 @@ impl FaceDetector {
         embeddings.remove(face_id).is_some()
     }
 
-    fn preprocess_for_detection(
-        img: &DynamicImage,
-    ) -> FaceResult<(Vec<f32>, (u32, u32))> {
+    fn preprocess_for_detection(img: &DynamicImage) -> FaceResult<(Vec<f32>, (u32, u32))> {
         let original_size = (img.width(), img.height());
         let resized = img.resize_exact(640, 640, image::imageops::FilterType::Lanczos3);
 
@@ -296,11 +283,7 @@ impl FaceDetector {
     }
 
     fn preprocess_for_recognition(face_img: &DynamicImage) -> FaceResult<Vec<f32>> {
-        let resized = face_img.resize_exact(
-            112,
-            112,
-            image::imageops::FilterType::Lanczos3,
-        );
+        let resized = face_img.resize_exact(112, 112, image::imageops::FilterType::Lanczos3);
 
         let rgb = resized.to_rgb8();
         let mut normalized_data = Vec::new();
@@ -322,7 +305,7 @@ impl FaceDetector {
     ) -> FaceResult<Vec<FaceDetection>> {
         let mut faces = Vec::new();
 
-        for (_, values) in result.outputs.iter() {
+        if let Some((_, values)) = result.outputs.iter().next() {
             let num_detections = values.len() / 15;
 
             for i in 0..num_detections {
@@ -357,8 +340,6 @@ impl FaceDetector {
                     }
                 }
             }
-
-            break;
         }
 
         Ok(faces)
@@ -368,7 +349,7 @@ impl FaceDetector {
         &self,
         result: &crate::core::onnx_runtime::InferenceResult,
     ) -> FaceResult<Vec<f32>> {
-        for (_, values) in result.outputs.iter() {
+        if let Some((_, values)) = result.outputs.iter().next() {
             return Ok(values.clone());
         }
 

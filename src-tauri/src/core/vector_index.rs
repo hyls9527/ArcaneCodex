@@ -32,7 +32,10 @@ pub struct IndexStats {
 pub enum VectorIndexError {
     #[allow(dead_code)]
     IndexNotInitialized,
-    DimensionMismatch { expected: usize, got: usize },
+    DimensionMismatch {
+        expected: usize,
+        got: usize,
+    },
     EmptyVector,
     #[allow(dead_code)]
     InsertFailed(String),
@@ -114,10 +117,7 @@ impl HnswVectorIndex {
     }
 
     #[allow(dead_code)]
-    pub async fn batch_insert(
-        &self,
-        entries: Vec<VectorEntry>,
-    ) -> VectorResult<(usize, usize)> {
+    pub async fn batch_insert(&self, entries: Vec<VectorEntry>) -> VectorResult<(usize, usize)> {
         let mut success_count = 0;
         let mut fail_count = 0;
 
@@ -213,9 +213,14 @@ impl HnswVectorIndex {
     pub async fn get_stats(&self) -> IndexStats {
         let entries = self.entries.read().await;
 
-        let total_size: usize = entries.values().map(|e| {
-            e.embedding.len() * 4 + e.id.len() + e.metadata.as_ref().map_or(0, |m| m.to_string().len())
-        }).sum();
+        let total_size: usize = entries
+            .values()
+            .map(|e| {
+                e.embedding.len() * 4
+                    + e.id.len()
+                    + e.metadata.as_ref().map_or(0, |m| m.to_string().len())
+            })
+            .sum();
 
         IndexStats {
             total_vectors: entries.len(),
@@ -229,12 +234,13 @@ impl HnswVectorIndex {
     pub async fn save_to_file(&self, filename: &str) -> VectorResult<PathBuf> {
         let entries = self.entries.read().await;
 
-        let data: HashMap<String, VectorEntry> = entries.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let data: HashMap<String, VectorEntry> = entries
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        let json_data =
-            serde_json::to_string_pretty(&data).map_err(|e| {
-                VectorIndexError::SerializationError(e.to_string())
-            })?;
+        let json_data = serde_json::to_string_pretty(&data)
+            .map_err(|e| VectorIndexError::SerializationError(e.to_string()))?;
 
         drop(entries);
 
@@ -266,10 +272,8 @@ impl HnswVectorIndex {
 
         let json_data = std::fs::read_to_string(&file_path)?;
 
-        let loaded_entries: HashMap<String, VectorEntry> =
-            serde_json::from_str(&json_data).map_err(|e| {
-                VectorIndexError::DeserializationError(e.to_string())
-            })?;
+        let loaded_entries: HashMap<String, VectorEntry> = serde_json::from_str(&json_data)
+            .map_err(|e| VectorIndexError::DeserializationError(e.to_string()))?;
 
         let count = loaded_entries.len();
 

@@ -117,17 +117,14 @@ impl LMStudioClient {
 
         let model_id = &self.config.model;
 
-        let model_info = body
-            .get("data")
-            .and_then(|d| d.as_array())
-            .and_then(|arr| {
-                arr.iter().find(|m| {
-                    m.get("id")
-                        .and_then(|id| id.as_str())
-                        .map(|id| id == model_id)
-                        .unwrap_or(false)
-                })
-            });
+        let model_info = body.get("data").and_then(|d| d.as_array()).and_then(|arr| {
+            arr.iter().find(|m| {
+                m.get("id")
+                    .and_then(|id| id.as_str())
+                    .map(|id| id == model_id)
+                    .unwrap_or(false)
+            })
+        });
 
         let is_vision = match model_info {
             Some(info) => {
@@ -176,7 +173,11 @@ impl LMStudioClient {
         info!(
             "模型 {} 视觉能力检测结果: {}",
             model_id,
-            if is_vision { "✅ 支持视觉" } else { "❌ 不支持视觉" }
+            if is_vision {
+                "✅ 支持视觉"
+            } else {
+                "❌ 不支持视觉"
+            }
         );
 
         Ok(is_vision)
@@ -194,8 +195,7 @@ impl LMStudioClient {
             Err(e) => {
                 warn!(
                     "无法检测模型 '{}' 的视觉能力（{}），继续尝试推理",
-                    self.config.model,
-                    e
+                    self.config.model, e
                 );
             }
         }
@@ -319,7 +319,11 @@ pub fn build_prompt() -> String {
         .to_string()
 }
 
-pub fn parse_ai_response(content: &str, provider: &str, model: &str) -> AppResult<crate::core::inference::AIResult> {
+pub fn parse_ai_response(
+    content: &str,
+    provider: &str,
+    model: &str,
+) -> AppResult<crate::core::inference::AIResult> {
     let content = content.trim();
     let content = strip_markdown_wrapper(content);
 

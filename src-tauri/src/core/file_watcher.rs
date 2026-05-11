@@ -1,10 +1,10 @@
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
-use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::broadcast;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileChangeEvent {
@@ -49,9 +49,11 @@ impl FileWatcherService {
                 }
             },
             Config::default(),
-        ).map_err(|e| format!("创建Watcher失败: {}", e))?;
+        )
+        .map_err(|e| format!("创建Watcher失败: {}", e))?;
 
-        watcher.watch(dir, RecursiveMode::Recursive)
+        watcher
+            .watch(dir, RecursiveMode::Recursive)
             .map_err(|e| format!("监控目录失败: {}", e))?;
 
         self.watcher.lock().unwrap().replace(watcher);

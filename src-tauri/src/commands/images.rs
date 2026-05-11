@@ -216,8 +216,7 @@ fn get_available_disk_space(path: &Path) -> AppResult<u64> {
             if result != 0 {
                 Ok(free_bytes)
             } else {
-                Err(AppError::io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Err(AppError::io(std::io::Error::other(
                     "Failed to get disk space information",
                 )))
             }
@@ -305,11 +304,11 @@ fn scan_directory(dir: &Path, results: &mut Vec<String>) {
 fn validate_magic_bytes(file_path: &Path, expected_ext: &str) -> AppResult<bool> {
     use std::io::Read;
 
-    let mut file = fs::File::open(file_path)
-        .map_err(|e| AppError::io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+    let mut file = fs::File::open(file_path).map_err(|e| AppError::io(std::io::Error::other(e)))?;
     let mut header = [0u8; 16];
-    let bytes_read = file.read(&mut header)
-        .map_err(|e| AppError::io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+    let bytes_read = file
+        .read(&mut header)
+        .map_err(|e| AppError::io(std::io::Error::other(e)))?;
 
     if bytes_read < 4 {
         return Ok(false);
@@ -319,10 +318,14 @@ fn validate_magic_bytes(file_path: &Path, expected_ext: &str) -> AppResult<bool>
         "jpg" | "jpeg" => header[0..3] == [0xFF, 0xD8, 0xFF],
         "png" => header[0..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
         "gif" => header[0..3] == [0x47, 0x49, 0x46],
-        "webp" => header[0..4] == [0x52, 0x49, 0x46, 0x46] && header[8..12] == [0x57, 0x45, 0x42, 0x50],
+        "webp" => {
+            header[0..4] == [0x52, 0x49, 0x46, 0x46] && header[8..12] == [0x57, 0x45, 0x42, 0x50]
+        }
         "bmp" => header[0..2] == [0x42, 0x4D],
         "ico" => header[0..4] == [0x00, 0x00, 0x01, 0x00],
-        "tiff" | "tif" => header[0..4] == [0x49, 0x49, 0x2A, 0x00] || header[0..4] == [0x4D, 0x4D, 0x00, 0x2A],
+        "tiff" | "tif" => {
+            header[0..4] == [0x49, 0x49, 0x2A, 0x00] || header[0..4] == [0x4D, 0x4D, 0x00, 0x2A]
+        }
         "avif" => header[4..12] == [0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66],
         _ => true,
     };
@@ -518,7 +521,11 @@ pub async fn import_images(
     info!("开始导入 {} 个路径", file_paths.len());
 
     let expanded_paths = expand_paths(&file_paths);
-    info!("路径展开后: {} 个文件 (原始 {} 个路径)", expanded_paths.len(), file_paths.len());
+    info!(
+        "路径展开后: {} 个文件 (原始 {} 个路径)",
+        expanded_paths.len(),
+        file_paths.len()
+    );
 
     let total = expanded_paths.len();
 
@@ -619,7 +626,12 @@ pub async fn import_images(
                     }
                     Ok(false) => {
                         match insert_image_record(
-                            &conn, &canonical_str, &file_name, file_size, &hash, &mime_type,
+                            &conn,
+                            &canonical_str,
+                            &file_name,
+                            file_size,
+                            &hash,
+                            &mime_type,
                         ) {
                             Ok(id) => {
                                 info!("[阶段1] 成功插入图片记录: {} (ID: {})", file_name, id);
@@ -759,7 +771,8 @@ pub async fn import_images(
                             },
                         };
                         (thumb_result, phash_result, exif_result, w, h)
-                    }).await;
+                    })
+                    .await;
 
                     let (thumb_result, phash_result, exif_result, w, h) = match process_result {
                         Ok(r) => r,

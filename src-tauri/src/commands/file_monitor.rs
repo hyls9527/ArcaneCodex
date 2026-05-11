@@ -1,16 +1,20 @@
+use crate::core::file_watcher::FileWatcherService;
+use crate::utils::error::{AppError, AppResult};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::AppHandle;
-use crate::core::file_watcher::FileWatcherService;
-use crate::utils::error::{AppError, AppResult};
 
 pub struct MonitorState {
     pub service: Arc<Mutex<FileWatcherService>>,
 }
 
 #[tauri::command]
-pub fn start_file_monitor(_app: AppHandle, state: tauri::State<'_, MonitorState>, directory: String) -> AppResult<()> {
+pub fn start_file_monitor(
+    _app: AppHandle,
+    state: tauri::State<'_, MonitorState>,
+    directory: String,
+) -> AppResult<()> {
     let dir = PathBuf::from(&directory);
     if !dir.exists() {
         return Err(AppError::config(format!("目录不存在: {}", directory)));

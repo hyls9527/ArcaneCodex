@@ -119,7 +119,10 @@ impl CalibrationEngine {
             });
         }
 
-        info!("ECE 计算完成: {:.4} ({} 个样本, {} 个 bin)", ece, total, n_bins);
+        info!(
+            "ECE 计算完成: {:.4} ({} 个样本, {} 个 bin)",
+            ece, total, n_bins
+        );
         Ok((ece, bin_stats_list))
     }
 
@@ -155,7 +158,10 @@ impl CalibrationEngine {
             });
         }
 
-        info!("MCE 计算完成: {:.4} ({} 个样本, {} 个 bin)", mce, total, n_bins);
+        info!(
+            "MCE 计算完成: {:.4} ({} 个样本, {} 个 bin)",
+            mce, total, n_bins
+        );
         Ok((mce, bin_stats_list))
     }
 
@@ -189,7 +195,7 @@ impl CalibrationEngine {
 
         let report_id = conn.last_insert_rowid();
 
-        self.save_calibration_curve(&bin_stats_ece, &"all".to_string(), total_samples, &now)?;
+        self.save_calibration_curve(&bin_stats_ece, "all", total_samples, &now)?;
 
         info!(
             "校准报告已生成: id={}, ECE={:.4}, MCE={:.4}, samples={}",
@@ -232,16 +238,14 @@ impl CalibrationEngine {
         });
 
         match result {
-            Ok((id, total_samples, ece, computed_at, mce, n_bins)) => {
-                Ok(Some(CalibrationReport {
-                    id: Some(id),
-                    ece,
-                    mce,
-                    total_samples,
-                    n_bins,
-                    computed_at,
-                }))
-            }
+            Ok((id, total_samples, ece, computed_at, mce, n_bins)) => Ok(Some(CalibrationReport {
+                id: Some(id),
+                ece,
+                mce,
+                total_samples,
+                n_bins,
+                computed_at,
+            })),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::database(e)),
         }
@@ -299,7 +303,8 @@ impl CalibrationEngine {
             .collect();
 
         for sample in samples {
-            let bin_idx = ((sample.raw_confidence * n_bins as f64).floor() as usize).min(n_bins - 1);
+            let bin_idx =
+                ((sample.raw_confidence * n_bins as f64).floor() as usize).min(n_bins - 1);
             bins[bin_idx].confidences.push(sample.raw_confidence);
             if sample.is_correct {
                 bins[bin_idx].correct_count += 1;
@@ -374,11 +379,7 @@ mod tests {
         }
 
         let (ece, bins) = engine.calculate_ece(Some(10)).unwrap();
-        assert!(
-            ece < 0.01,
-            "完美校准模型 ECE 应接近 0，实际值: {:.4}",
-            ece
-        );
+        assert!(ece < 0.01, "完美校准模型 ECE 应接近 0，实际值: {:.4}", ece);
         assert_eq!(bins.len(), 10, "应有 10 个 bin");
     }
 
@@ -447,9 +448,7 @@ mod tests {
         for i in 0..20i64 {
             let conf = if i < 10 { 0.95 } else { 0.05 };
             let correct = i < 10;
-            engine
-                .add_sample(i, "test", conf, correct)
-                .unwrap();
+            engine.add_sample(i, "test", conf, correct).unwrap();
         }
 
         let (mce, bins) = engine.calculate_mce(Some(10)).unwrap();
@@ -525,10 +524,7 @@ mod tests {
         let report2 = engine.generate_report(Some(10)).unwrap();
 
         let latest = engine.get_latest_report().unwrap().unwrap();
-        assert_eq!(
-            latest.id, report2.id,
-            "最新报告应为第二次生成的"
-        );
+        assert_eq!(latest.id, report2.id, "最新报告应为第二次生成的");
         assert!(
             latest.id.unwrap() > report1.id.unwrap(),
             "最新报告 ID 应更大"
@@ -555,10 +551,7 @@ mod tests {
         let curve = engine.get_calibration_curve().unwrap();
         let non_empty_bins: Vec<_> = curve.iter().filter(|p| p.sample_count > 0).collect();
 
-        assert!(
-            !non_empty_bins.is_empty(),
-            "校准曲线应有非空 bin"
-        );
+        assert!(!non_empty_bins.is_empty(), "校准曲线应有非空 bin");
 
         for point in &curve {
             assert!(
@@ -599,9 +592,6 @@ mod tests {
         engine.add_sample(4, "test", 0.000001, false).unwrap();
 
         let (ece, _) = engine.calculate_ece(Some(10)).unwrap();
-        assert!(
-            ece.is_finite(),
-            "边界置信度值不应产生 NaN 或 Inf"
-        );
+        assert!(ece.is_finite(), "边界置信度值不应产生 NaN 或 Inf");
     }
 }

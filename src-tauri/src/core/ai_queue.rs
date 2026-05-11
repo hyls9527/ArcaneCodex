@@ -17,6 +17,8 @@ const QUEUE_CAPACITY: usize = 1000;
 const DEFAULT_CONCURRENCY: usize = 3;
 const MAX_RETRIES: u32 = 3;
 
+type CachedProvider = Arc<TokioMutex<Option<(ProviderConfig, Box<dyn InferenceProvider>)>>>;
+
 #[derive(Debug, Clone)]
 pub struct AITask {
     pub image_id: i64,
@@ -365,7 +367,7 @@ struct Worker {
     db: Arc<Database>,
     app_handle: Option<AppHandle>,
     circuit_breaker: Arc<CircuitBreaker>,
-    cached_provider: Arc<TokioMutex<Option<(ProviderConfig, Box<dyn InferenceProvider>)>>>,
+    cached_provider: CachedProvider,
 }
 
 impl Worker {
@@ -476,71 +478,71 @@ impl Worker {
         };
 
         match provider.analyze_image(file_path).await {
-                Ok(result) => {
-                    self.circuit_breaker.record_success();
+            Ok(result) => {
+                self.circuit_breaker.record_success();
 
-                    let tags_json = serde_json::to_string(&result.tags).unwrap_or_default();
+                let tags_json = serde_json::to_string(&result.tags).unwrap_or_default();
 
-                    let tag_status = self.determine_tag_status(
-                        &result.category,
-                        result.confidence,
-                        &result.tags,
+                let tag_status = self.determine_tag_status(
+                    &result.category,
+                    result.confidence,
+                    &result.tags,
+                    &result.description,
+                );
+
+                let _ = self.update_ai_status_full(
+                    image_id,
+                    "completed",
+                    Some(&tags_json),
+                    Some(&result.description),
+                    Some(&result.category),
+                    Some(result.confidence),
+                    Some(&result.model),
+                    Some(&result.provider),
+                    Some(&tag_status),
+                    None,
+                );
+
+                if tag_status != "rejected" {
+                    let builder = SearchIndexBuilder::new();
+                    if let Err(e) = builder.build_for_image(
+                        &self.db,
+                        image_id,
                         &result.description,
-                    );
-
-                    let _ = self.update_ai_status_full(
-                        image_id,
-                        "completed",
-                        Some(&tags_json),
-                        Some(&result.description),
-                        Some(&result.category),
-                        Some(result.confidence),
-                        Some(&result.model),
-                        Some(&result.provider),
-                        Some(&tag_status),
-                        None,
-                    );
-
-                    if tag_status != "rejected" {
-                        let builder = SearchIndexBuilder::new();
-                        if let Err(e) = builder.build_for_image(
-                            &self.db,
-                            image_id,
-                            &result.description,
-                            &result.tags,
-                            &result.category,
-                        ) {
-                            warn!("构建搜索索引失败 (image_id={}): {}", image_id, e);
-                        }
-                    } else {
-                        debug!(
-                            "标签状态为 rejected，跳过搜索索引构建 (image_id={})",
-                            image_id
-                        );
-                    }
-
-                    self.processed_tasks.fetch_add(1, Ordering::SeqCst);
-                    self.emit_progress(image_id, "completed", &result.description);
-
-                    if let Err(e) = self.record_calibration_sample(
-                        image_id,
+                        &result.tags,
                         &result.category,
-                        result.confidence,
-                        &tag_status,
                     ) {
-                        warn!("记录校准样本失败 (image_id={}): {}", image_id, e);
+                        warn!("构建搜索索引失败 (image_id={}): {}", image_id, e);
                     }
-
-                    info!(
-                        "Worker {} 完成 image_id={}, provider={}, tag_status={}",
-                        self.worker_id, image_id, result.provider, tag_status
+                } else {
+                    debug!(
+                        "标签状态为 rejected，跳过搜索索引构建 (image_id={})",
+                        image_id
                     );
                 }
-                Err(e) => {
-                    self.circuit_breaker.record_failure();
-                    self.handle_ai_failure(image_id, task.retry_count, &e.to_string())
-                        .await;
+
+                self.processed_tasks.fetch_add(1, Ordering::SeqCst);
+                self.emit_progress(image_id, "completed", &result.description);
+
+                if let Err(e) = self.record_calibration_sample(
+                    image_id,
+                    &result.category,
+                    result.confidence,
+                    &tag_status,
+                ) {
+                    warn!("记录校准样本失败 (image_id={}): {}", image_id, e);
                 }
+
+                info!(
+                    "Worker {} 完成 image_id={}, provider={}, tag_status={}",
+                    self.worker_id, image_id, result.provider, tag_status
+                );
+            }
+            Err(e) => {
+                self.circuit_breaker.record_failure();
+                self.handle_ai_failure(image_id, task.retry_count, &e.to_string())
+                    .await;
+            }
         }
     }
 

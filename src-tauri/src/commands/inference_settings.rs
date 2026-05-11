@@ -160,8 +160,7 @@ pub async fn test_inference_connection(db: State<'_, Database>) -> AppResult<Str
     let vision_status = match provider.check_vision_capability().await {
         Ok(true) => "✅ 支持视觉分析".to_string(),
         Ok(false) => {
-            "⚠️ 当前模型不支持视觉分析\n"
-                .to_string()
+            "⚠️ 当前模型不支持视觉分析\n".to_string()
                 + "   💡 图片分析功能将不可用\n"
                 + "   请切换到支持视觉的模型（如 Qwen2.5-VL、LLaVA、Gemma-4、GPT-4o 等）"
         }

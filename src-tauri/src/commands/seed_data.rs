@@ -211,7 +211,11 @@ pub fn load_sample_data(db: State<'_, Database>) -> AppResult<i64> {
     let conn = db.open_connection().map_err(AppError::database)?;
 
     let existing: i64 = conn
-        .query_row("SELECT COUNT(*) FROM images WHERE source = 'sample'", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM images WHERE source = 'sample'",
+            [],
+            |row| row.get(0),
+        )
         .map_err(AppError::database)?;
 
     if existing > 0 {

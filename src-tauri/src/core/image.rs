@@ -28,8 +28,7 @@ impl ImageProcessor {
         let thumbnail = img.thumbnail(MAX_THUMBNAIL_WIDTH, MAX_THUMBNAIL_HEIGHT);
 
         if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            std::fs::create_dir_all(parent).map_err(|e| AppError::io(std::io::Error::other(e)))?;
         }
 
         thumbnail

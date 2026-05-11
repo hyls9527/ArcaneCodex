@@ -209,16 +209,16 @@ impl OnnxRuntimeManager {
     ) -> Result<InferenceResult> {
         let config = {
             let configs = self.configs.read().await;
-            configs
-                .get(&model_type)
-                .cloned()
-                .ok_or_else(|| OnnxError::InferenceFailed(format!("模型未加载: {:?}", model_type)))?
+            configs.get(&model_type).cloned().ok_or_else(|| {
+                OnnxError::InferenceFailed(format!("模型未加载: {:?}", model_type))
+            })?
         };
 
         let start_time = std::time::Instant::now();
 
-        let input_tensor = ort::value::Tensor::from_array((input_shape.clone(), input_data.to_vec()))
-            .map_err(|e| OnnxError::InvalidInput(format!("创建张量失败: {}", e)))?;
+        let input_tensor =
+            ort::value::Tensor::from_array((input_shape.clone(), input_data.to_vec()))
+                .map_err(|e| OnnxError::InvalidInput(format!("创建张量失败: {}", e)))?;
 
         let output_data = {
             let mut sessions = self.sessions.write().await;
@@ -238,7 +238,10 @@ impl OnnxRuntimeManager {
 
                 Ok(data_map)
             } else {
-                Err(OnnxError::InferenceFailed(format!("模型未加载: {:?}", model_type)))
+                Err(OnnxError::InferenceFailed(format!(
+                    "模型未加载: {:?}",
+                    model_type
+                )))
             }
         }?;
 
@@ -275,7 +278,10 @@ impl OnnxRuntimeManager {
         let dummy_data = vec![0.0f32; total_elements];
 
         for i in 0..3 {
-            match self.run_inference(model_type, &dummy_data, shape.clone()).await {
+            match self
+                .run_inference(model_type, &dummy_data, shape.clone())
+                .await
+            {
                 Ok(_) => tracing::info!(model = model_type.as_str(), round = i + 1, "warmup 完成"),
                 Err(e) => {
                     tracing::warn!(model = model_type.as_str(), round = i + 1, error = %e, "warmup 失败");

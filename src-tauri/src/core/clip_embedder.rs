@@ -124,17 +124,14 @@ impl ClipEmbedder {
         embedding_b: &[f32],
     ) -> ClipResult<f32> {
         if embedding_a.len() != embedding_b.len() {
-            return Err(ClipError::InvalidEmbeddingDimension(
-                embedding_a.len(),
-            ));
+            return Err(ClipError::InvalidEmbeddingDimension(embedding_a.len()));
         }
 
         Ok(Self::cosine_similarity(embedding_a, embedding_b))
     }
 
     fn preprocess_image(img: &DynamicImage) -> ClipResult<Vec<f32>> {
-        let resized =
-            img.resize_exact(224, 224, image::imageops::FilterType::Lanczos3);
+        let resized = img.resize_exact(224, 224, image::imageops::FilterType::Lanczos3);
 
         let rgb = resized.to_rgb8();
         let mut normalized_data = Vec::with_capacity(224 * 224 * 3);
@@ -152,7 +149,7 @@ impl ClipEmbedder {
         &self,
         result: &crate::core::onnx_runtime::InferenceResult,
     ) -> ClipResult<Vec<f32>> {
-        for (_, values) in result.outputs.iter() {
+        if let Some((_, values)) = result.outputs.iter().next() {
             return Ok(values.clone());
         }
 

@@ -11,11 +11,11 @@ const ENCRYPTION_PREFIX_V2: &str = "enc:v2:";
 
 fn derive_key() -> [u8; 32] {
     let machine_id = format!(
-        "{}:{}:{}:{}",
+        "{}:{}:{:?}:{:?}",
         whoami::fallible::hostname().unwrap_or_default(),
         whoami::fallible::username().unwrap_or_default(),
-        format!("{:?}", whoami::platform()),
-        format!("{:?}", whoami::arch()),
+        whoami::platform(),
+        whoami::arch(),
     );
     let mut hasher = Sha256::new();
     hasher.update(machine_id.as_bytes());
@@ -55,8 +55,7 @@ pub fn decrypt_api_key(ciphertext: &str) -> String {
         return String::new();
     }
 
-    if ciphertext.starts_with(ENCRYPTION_PREFIX_V2) {
-        let encoded = &ciphertext[ENCRYPTION_PREFIX_V2.len()..];
+    if let Some(encoded) = ciphertext.strip_prefix(ENCRYPTION_PREFIX_V2) {
         let key = derive_key();
         let cipher = Aes256Gcm::new_from_slice(&key).expect("valid key length");
 
@@ -80,8 +79,7 @@ pub fn decrypt_api_key(ciphertext: &str) -> String {
                 String::new()
             }
         }
-    } else if ciphertext.starts_with(ENCRYPTION_PREFIX_V1) {
-        let encoded = &ciphertext[ENCRYPTION_PREFIX_V1.len()..];
+    } else if let Some(encoded) = ciphertext.strip_prefix(ENCRYPTION_PREFIX_V1) {
         let key = derive_key();
         let cipher = Aes256Gcm::new_from_slice(&key).expect("valid key length");
         let nonce = Nonce::from_slice(b"ac-kd-nonce-12");

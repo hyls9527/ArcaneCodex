@@ -8,7 +8,7 @@ use crate::core::{
     clip_embedder::ClipEmbedder,
     face_detector::FaceDetector,
     image_classifier::ImageClassifier,
-    onnx_runtime::{ModelType, OnnxRuntimeManager, ModelStatus},
+    onnx_runtime::{ModelStatus, ModelType, OnnxRuntimeManager},
     vector_index::{HnswVectorIndex, VectorEntry},
 };
 
@@ -53,9 +53,13 @@ pub async fn load_ai_model(
         }
     };
 
-    let path = custom_path.as_ref().map(|p| PathBuf::from(p));
+    let path = custom_path.as_ref().map(PathBuf::from);
 
-    match state.onnx_manager.load_model(model_type, path.as_deref()).await {
+    match state
+        .onnx_manager
+        .load_model(model_type, path.as_deref())
+        .await
+    {
         Ok(config) => {
             let _ = state.onnx_manager.warmup_model(model_type).await;
             Ok(ModelLoadResult {

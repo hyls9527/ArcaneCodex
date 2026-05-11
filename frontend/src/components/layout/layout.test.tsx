@@ -96,7 +96,7 @@ describe('布局组件单元测试', () => {
       await fireEvent.click(collapseButton)
       
       await waitFor(() => {
-        expect(screen.queryByText('图库')).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: '展开侧边栏' })).toBeInTheDocument()
       })
     })
   })

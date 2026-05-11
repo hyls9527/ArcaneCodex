@@ -4,8 +4,8 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::core::knowledge_graph::{
-    EdgeType, GraphCommunity, GraphEdge, GraphNode, GraphPath, GraphStats,
-    KnowledgeGraphEngine, NeighborResult,
+    EdgeType, GraphCommunity, GraphEdge, GraphNode, GraphPath, GraphStats, KnowledgeGraphEngine,
+    NeighborResult,
 };
 
 pub struct KgState {
@@ -36,30 +36,22 @@ pub async fn kg_build_graph(state: State<'_, KgState>) -> Result<BuildResult, St
 }
 
 #[tauri::command]
-pub async fn kg_get_stats(
-    state: State<'_, KgState>,
-) -> Result<GraphStats, String> {
+pub async fn kg_get_stats(state: State<'_, KgState>) -> Result<GraphStats, String> {
     Ok(state.engine.get_graph_stats().await)
 }
 
 #[tauri::command]
-pub async fn kg_get_all_nodes(
-    state: State<'_, KgState>,
-) -> Result<Vec<GraphNode>, String> {
+pub async fn kg_get_all_nodes(state: State<'_, KgState>) -> Result<Vec<GraphNode>, String> {
     Ok(state.engine.get_all_nodes().await)
 }
 
 #[tauri::command]
-pub async fn kg_get_all_edges(
-    state: State<'_, KgState>,
-) -> Result<Vec<GraphEdge>, String> {
+pub async fn kg_get_all_edges(state: State<'_, KgState>) -> Result<Vec<GraphEdge>, String> {
     Ok(state.engine.get_all_edges().await)
 }
 
 #[tauri::command]
-pub async fn kg_get_communities(
-    state: State<'_, KgState>,
-) -> Result<Vec<GraphCommunity>, String> {
+pub async fn kg_get_communities(state: State<'_, KgState>) -> Result<Vec<GraphCommunity>, String> {
     Ok(state.engine.get_communities().await)
 }
 
@@ -81,11 +73,11 @@ pub async fn kg_get_neighbors(
     let filter = edge_types.map(|types| {
         types
             .iter()
-            .map(|t| EdgeType::from_str(t))
+            .map(|t| EdgeType::from_str_name(t))
             .collect::<Vec<EdgeType>>()
     });
 
-    let filter_ref = filter.as_ref().map(|f| f.as_slice());
+    let filter_ref = filter.as_deref();
 
     Ok(state
         .engine
@@ -111,10 +103,7 @@ pub async fn kg_search_nodes(
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<GraphNode>, String> {
-    Ok(state
-        .engine
-        .search_nodes(&query, limit.unwrap_or(20))
-        .await)
+    Ok(state.engine.search_nodes(&query, limit.unwrap_or(20)).await)
 }
 
 #[tauri::command]

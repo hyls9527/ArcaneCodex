@@ -1,27 +1,38 @@
 use regex::Regex;
 use std::fmt;
-use std::sync::LazyLock;
+use std::sync::OnceLock;
 
-static RE_API_KEY_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(?P<prefix>(?:Bearer\s+|sk[-_]|api_key\s*[:=]\s*|token\s*[:=]\s*|authorization\s*[:=]\s*|password\s*[:=]\s*|secret\s*[:=]\s*))(?P<key>[A-Za-z0-9_-]{8,64})").unwrap()
-});
+fn api_key_prefix() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)(?P<prefix>(?:Bearer\s+|sk[-_]|api_key\s*[:=]\s*|token\s*[:=]\s*|authorization\s*[:=]\s*|password\s*[:=]\s*|secret\s*[:=]\s*))(?P<key>[A-Za-z0-9_-]{8,64})").unwrap()
+    })
+}
 
-static RE_ENCRYPTED_KEY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(enc:v[12]:)([A-Za-z0-9+/=]{16,})").unwrap()
-});
+fn encrypted_key() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?i)(enc:v[12]:)([A-Za-z0-9+/=]{16,})").unwrap())
+}
 
-static RE_WINDOWS_PATH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)[A-Za-z]:\\(?:[^\s:\\/]+[\\/])*[^\s:\\/]*\.\w+").unwrap()
-});
+fn windows_path() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?i)[A-Za-z]:\\(?:[^\s:\\/]+[\\/])*[^\s:\\/]*\.\w+").unwrap())
+}
 
-static RE_UNIX_PATH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)/(?:home|Users|tmp|var|opt|etc|srv)/(?:[^\s/]+)/[^\s]*").unwrap()
-});
+fn unix_path() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)/(?:home|Users|tmp|var|opt|etc|srv)/(?:[^\s/]+)/[^\s]*").unwrap()
+    })
+}
 
-static RE_URL_SENSITIVE_PARAMS: LazyLock<Regex> = LazyLock::new(|| {
-    let pattern = r"(?i)[?&](token|api_key|apikey|access_token|secret|password|auth|credential)[=][^&\s\x22\x27]*(?=[&\s\x22\x27]|$)";
-    Regex::new(pattern).unwrap()
-});
+fn url_sensitive_params() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        let pattern = r"(?i)[?&](token|api_key|apikey|access_token|secret|password|auth|credential)[=][^&\s\x22\x27]*(?=[&\s\x22\x27]|$)";
+        Regex::new(pattern).unwrap()
+    })
+}
 
 pub fn sanitize_log_message(msg: &str) -> String {
     if msg.is_empty() || msg.len() < 4 {
@@ -30,7 +41,7 @@ pub fn sanitize_log_message(msg: &str) -> String {
 
     let mut result = msg.to_string();
 
-    result = RE_API_KEY_PREFIX
+    result = api_key_prefix()
         .replace_all(&result, |caps: &regex::Captures| {
             let prefix = &caps["prefix"];
             let key = &caps["key"];
@@ -39,7 +50,7 @@ pub fn sanitize_log_message(msg: &str) -> String {
         })
         .to_string();
 
-    result = RE_ENCRYPTED_KEY
+    result = encrypted_key()
         .replace_all(&result, |caps: &regex::Captures| {
             let prefix = &caps[1];
             let encoded = &caps[2];
@@ -48,15 +59,15 @@ pub fn sanitize_log_message(msg: &str) -> String {
         })
         .to_string();
 
-    result = RE_WINDOWS_PATH
+    result = windows_path()
         .replace_all(&result, "[REDACTED_PATH]")
         .to_string();
 
-    result = RE_UNIX_PATH
+    result = unix_path()
         .replace_all(&result, "[REDACTED_PATH]")
         .to_string();
 
-    result = RE_URL_SENSITIVE_PARAMS
+    result = url_sensitive_params()
         .replace_all(&result, |caps: &regex::Captures| {
             let full_match = caps.get(0).unwrap().as_str();
             let param_name_end = full_match.find('=').unwrap_or(full_match.len());
@@ -90,7 +101,7 @@ pub fn redact_path(path: &str) -> String {
         return String::new();
     }
 
-    if RE_WINDOWS_PATH.is_match(path) || RE_UNIX_PATH.is_match(path) {
+    if windows_path().is_match(path) || unix_path().is_match(path) {
         return "[REDACTED_PATH]".to_string();
     }
     path.to_string()
@@ -102,12 +113,11 @@ pub fn redact_url(url: &str) -> String {
         return String::new();
     }
 
-    let sanitized = RE_URL_SENSITIVE_PARAMS
-        .replace_all(url, |caps: &regex::Captures| {
-            let full_match = caps.get(0).unwrap().as_str();
-            let param_name_end = full_match.find('=').unwrap_or(full_match.len());
-            format!("{}=[REDACTED]", &full_match[..param_name_end])
-        });
+    let sanitized = url_sensitive_params().replace_all(url, |caps: &regex::Captures| {
+        let full_match = caps.get(0).unwrap().as_str();
+        let param_name_end = full_match.find('=').unwrap_or(full_match.len());
+        format!("{}=[REDACTED]", &full_match[..param_name_end])
+    });
 
     sanitized.to_string()
 }
@@ -164,10 +174,7 @@ pub fn init_sanitized_logging() {
 
             tracing_subscriber::registry()
                 .with(layer)
-                .with(
-                    EnvFilter::from_default_env()
-                        .add_directive(tracing::Level::INFO.into()),
-                )
+                .with(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
                 .init();
         }
         Err(_) => {
@@ -178,10 +185,7 @@ pub fn init_sanitized_logging() {
 
             tracing_subscriber::registry()
                 .with(layer)
-                .with(
-                    EnvFilter::from_default_env()
-                        .add_directive(tracing::Level::INFO.into()),
-                )
+                .with(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
                 .init();
         }
     }
@@ -201,7 +205,9 @@ where
         event: &tracing::Event<'_>,
     ) -> Result<(), std::fmt::Error> {
         let mut message = String::new();
-        event.record(&mut MessageVisitor { message: &mut message });
+        event.record(&mut MessageVisitor {
+            message: &mut message,
+        });
         let sanitized = sanitize_log_message(&message);
         write!(writer, "{}", sanitized)
     }
@@ -339,6 +345,10 @@ mod tests {
         let start = std::time::Instant::now();
         let _ = sanitize_log_message(&msg);
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 50, "Sanitization took too long: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 50,
+            "Sanitization took too long: {:?}",
+            elapsed
+        );
     }
 }

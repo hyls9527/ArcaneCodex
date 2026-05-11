@@ -14,7 +14,9 @@ fn global_jieba() -> &'static Jieba {
 
 const SEARCH_CACHE_TTL: Duration = Duration::from_secs(300);
 
-static SEARCH_CACHE: OnceLock<Mutex<HashMap<u64, (Instant, Vec<SearchResult>)>>> = OnceLock::new();
+type SearchCacheStore = Mutex<HashMap<u64, (Instant, Vec<SearchResult>)>>;
+
+static SEARCH_CACHE: OnceLock<SearchCacheStore> = OnceLock::new();
 
 fn search_cache() -> &'static Mutex<HashMap<u64, (Instant, Vec<SearchResult>)>> {
     SEARCH_CACHE.get_or_init(|| Mutex::new(HashMap::new()))

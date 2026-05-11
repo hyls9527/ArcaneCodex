@@ -2,7 +2,7 @@ use crate::core::db::Database;
 use crate::utils::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::State;
 use tracing::info;
 
@@ -118,7 +118,7 @@ fn fetch_image_metadata(db: &Database, request: &ExportRequest) -> AppResult<Vec
                 .map(|id| id as &dyn rusqlite::types::ToSql)
                 .collect();
 
-            let rows = stmt.query_map(params.as_slice(), |row| map_row_to_metadata(row))?;
+            let rows = stmt.query_map(params.as_slice(), map_row_to_metadata)?;
 
             for row in rows {
                 metadata_list.push(row?);
@@ -132,7 +132,7 @@ fn fetch_image_metadata(db: &Database, request: &ExportRequest) -> AppResult<Vec
                  FROM images ORDER BY id",
             )?;
 
-            let rows = stmt.query_map([], |row| map_row_to_metadata(row))?;
+            let rows = stmt.query_map([], map_row_to_metadata)?;
 
             for row in rows {
                 metadata_list.push(row?);
@@ -213,7 +213,7 @@ fn escape_csv(value: &str) -> String {
     value.replace("\"", "\"\"")
 }
 
-fn validate_export_path(path: &PathBuf) -> AppResult<()> {
+fn validate_export_path(path: &Path) -> AppResult<()> {
     let path_str = path.to_string_lossy().to_lowercase();
 
     for sensitive_dir in SENSITIVE_DIRS {

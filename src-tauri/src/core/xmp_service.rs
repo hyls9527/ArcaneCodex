@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use xmpkit::{XmpMeta, XmpValue, XmpOptions, XmpFile};
 use xmpkit::core::namespace::ns;
-use serde::{Deserialize, Serialize};
+use xmpkit::{XmpFile, XmpMeta, XmpOptions, XmpValue};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XmpMetadata {
@@ -37,11 +37,12 @@ impl XmpService {
     /// 从文件读取 XMP 元数据
     pub fn read_xmp_from_file(file_path: &Path) -> Result<Option<XmpMetadata>, String> {
         let mut file = XmpFile::new();
-        file.open(file_path).map_err(|e| format!("打开文件失败: {}", e))?;
+        file.open(file_path)
+            .map_err(|e| format!("打开文件失败: {}", e))?;
 
         match file.get_xmp() {
             Some(meta) => {
-                let result = Self::meta_to_struct(&meta)?;
+                let result = Self::meta_to_struct(meta)?;
                 Ok(Some(result))
             }
             None => Ok(None),
@@ -49,16 +50,12 @@ impl XmpService {
     }
 
     /// 将 XMP 元数据写入文件
-    pub fn write_xmp_to_file(
-        file_path: &Path,
-        metadata: &XmpMetadata,
-    ) -> Result<(), String> {
+    pub fn write_xmp_to_file(file_path: &Path, metadata: &XmpMetadata) -> Result<(), String> {
         if !file_path.exists() {
             return Err(format!("文件不存在: {}", file_path.display()));
         }
 
-        let data = fs::read(file_path)
-            .map_err(|e| format!("读取文件失败: {}", e))?;
+        let data = fs::read(file_path).map_err(|e| format!("读取文件失败: {}", e))?;
 
         let mut file = XmpFile::new();
         file.from_bytes_with(&data, XmpOptions::default().for_update())
@@ -67,11 +64,11 @@ impl XmpService {
         let meta = Self::struct_to_meta(metadata);
         file.put_xmp(meta);
 
-        let output = file.write_to_bytes()
+        let output = file
+            .write_to_bytes()
             .map_err(|e| format!("写入XMP失败: {}", e))?;
 
-        fs::write(file_path, output)
-            .map_err(|e| format!("保存文件失败: {}", e))?;
+        fs::write(file_path, output).map_err(|e| format!("保存文件失败: {}", e))?;
 
         Ok(())
     }
@@ -84,38 +81,58 @@ impl XmpService {
         let sidecar_path = image_path.with_extension("xmp");
 
         let meta = Self::struct_to_meta(metadata);
-        let packet = meta.serialize()
+        let packet = meta
+            .serialize()
             .map_err(|e| format!("序列化XMP失败: {}", e))?;
 
-        fs::write(&sidecar_path, packet)
-            .map_err(|e| format!("写入Sidecar失败: {}", e))?;
+        fs::write(&sidecar_path, packet).map_err(|e| format!("写入Sidecar失败: {}", e))?;
 
         Ok(sidecar_path)
     }
 
     /// 从 XmpMeta 转换为结构体
     fn meta_to_struct(meta: &XmpMeta) -> Result<XmpMetadata, String> {
-        let creator = meta.get_property(ns::XMP, "CreatorTool")
-            .and_then(|v| match v { XmpValue::String(s) => Some(s.clone()), _ => None });
+        let creator = meta
+            .get_property(ns::XMP, "CreatorTool")
+            .and_then(|v| match v {
+                XmpValue::String(s) => Some(s.clone()),
+                _ => None,
+            });
 
-        let title = meta.get_property(ns::DC, "title")
-            .and_then(|v| match v { XmpValue::String(s) => Some(s.clone()), _ => None });
+        let title = meta.get_property(ns::DC, "title").and_then(|v| match v {
+            XmpValue::String(s) => Some(s.clone()),
+            _ => None,
+        });
 
-        let description = meta.get_property(ns::DC, "description")
-            .and_then(|v| match v { XmpValue::String(s) => Some(s.clone()), _ => None });
+        let description = meta
+            .get_property(ns::DC, "description")
+            .and_then(|v| match v {
+                XmpValue::String(s) => Some(s.clone()),
+                _ => None,
+            });
 
-        let subject_raw = meta.get_property(ns::DC, "subject")
-            .and_then(|v| match v { XmpValue::String(s) => Some(s.clone()), _ => None })
+        let subject_raw = meta
+            .get_property(ns::DC, "subject")
+            .and_then(|v| match v {
+                XmpValue::String(s) => Some(s.clone()),
+                _ => None,
+            })
             .unwrap_or_default();
-        let subject: Vec<String> = subject_raw.split(';')
+        let subject: Vec<String> = subject_raw
+            .split(';')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
 
-        let keywords_raw = meta.get_property("http://ns.adobe.com/pdf/1.3/", "Keywords")
-            .and_then(|v| match v { XmpValue::String(s) => Some(s.clone()), _ => None })
+        let keywords_raw = meta
+            .get_property("http://ns.adobe.com/pdf/1.3/", "Keywords")
+            .and_then(|v| match v {
+                XmpValue::String(s) => Some(s.clone()),
+                _ => None,
+            })
             .unwrap_or_default();
-        let keywords: Vec<String> = keywords_raw.split(',')
+        let keywords: Vec<String> = keywords_raw
+            .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
@@ -146,19 +163,25 @@ impl XmpService {
             let _ = meta.set_property(ns::DC, "description", XmpValue::String(d.clone()));
         }
         if !metadata.subject.is_empty() {
-            let _ = meta.set_property(ns::DC, "subject", XmpValue::String(
-                metadata.subject.join("; ")
-            ));
+            let _ = meta.set_property(
+                ns::DC,
+                "subject",
+                XmpValue::String(metadata.subject.join("; ")),
+            );
         }
         if !metadata.keywords.is_empty() {
             let _ = meta.set_property(
                 "http://ns.adobe.com/pdf/1.3/",
                 "Keywords",
-                XmpValue::String(metadata.keywords.join(", "))
+                XmpValue::String(metadata.keywords.join(", ")),
             );
         }
         // 标记创建工具
-        let _ = meta.set_property(ns::XMP, "CreatorTool", XmpValue::String("ArcaneGallery".to_string()));
+        let _ = meta.set_property(
+            ns::XMP,
+            "CreatorTool",
+            XmpValue::String("ArcaneGallery".to_string()),
+        );
 
         meta
     }
