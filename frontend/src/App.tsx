@@ -53,18 +53,18 @@ function safeParseAiTags(aiTags: unknown): string[] | undefined {
  * 安全解析 exif_data 字段
  * 处理三种情况：已经是对象、是 JSON 字符串、或其他类型
  */
-function safeParseExifData(exifData: unknown): Record<string, unknown> | undefined {
+function safeParseExifData(exifData: unknown): Record<string, string | number | undefined> | undefined {
   if (exifData === undefined || exifData === null) {
     return undefined
   }
   if (typeof exifData === 'object' && !Array.isArray(exifData)) {
-    return exifData as Record<string, unknown>
+    return exifData as Record<string, string | number | undefined>
   }
   if (typeof exifData === 'string') {
     try {
       const parsed = JSON.parse(exifData)
       return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-        ? parsed as Record<string, unknown>
+        ? parsed as Record<string, string | number | undefined>
         : {}
     } catch {
       console.warn('[App] Failed to parse exif_data:', exifData)
