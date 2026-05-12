@@ -407,7 +407,7 @@ fn get_available_disk_space(path: &Path) -> AppResult<u64> {
         let result = unsafe { libc::statvfs(cpath.as_ptr(), &mut statvfs_buf) };
 
         if result == 0 {
-            Ok(unsafe { statvfs_buf.f_frsize * statvfs_buf.f_bavail })
+            Ok(statvfs_buf.f_frsize * statvfs_buf.f_bavail)
         } else {
             Err(AppError::io(std::io::Error::other("无法获取磁盘空间信息")))
         }
