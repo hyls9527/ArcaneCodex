@@ -16,17 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Tauri system dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-cache
-          key: tauri-deps-v1-${{ hashFiles('src-tauri/Cargo.toml') }}
-          restore-keys: tauri-deps-v1-
-
       - name: Install Tauri dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --cache-dir=~/apt-cache libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
