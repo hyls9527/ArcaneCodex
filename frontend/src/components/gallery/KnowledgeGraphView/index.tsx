@@ -143,7 +143,7 @@ export default function KnowledgeGraphView() {
     [], // intentionally empty — reads from refs to avoid stale closures
   )
 
-  const { forceNodesRef, edgesRef, initForceLayout, findNodeAt, cancelSimulation } = useForceSimulation({
+  const { forceNodesRef, initForceLayout, findNodeAt, cancelSimulation } = useForceSimulation({
     containerRef,
     onDraw: draw,
   })
