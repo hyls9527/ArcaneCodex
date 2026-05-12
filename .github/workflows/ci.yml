@@ -37,7 +37,16 @@ jobs:
 
       - name: Clippy
         working-directory: src-tauri
-        run: cargo clippy --lib --bins --all-features -- -D warnings
+        run: |
+          set -o pipefail
+          cargo clippy --lib --bins --all-features -- -D warnings 2>&1 | tee ../clippy-output.txt
+      - name: Upload Clippy Output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-output
+          path: clippy-output.txt
+          retention-days: 7
 
   lint-frontend:
     name: Lint Frontend
