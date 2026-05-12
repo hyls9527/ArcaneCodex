@@ -904,7 +904,7 @@ mod tests {
                 "lm_studio" => assert_eq!(port, 1234),
                 "ollama" => assert_eq!(port, 11434),
                 "hermes" => assert_eq!(port, 18789),
-                _ => panic!("未知提供者: {}", provider),
+                other => unreachable!("Unexpected provider: {}", other),
             }
         }
     }
@@ -923,7 +923,7 @@ mod tests {
                 "lm_studio" => assert_eq!(url, "http://127.0.0.1:1234"),
                 "ollama" => assert_eq!(url, "http://127.0.0.1:11434"),
                 "hermes" => assert_eq!(url, "http://127.0.0.1:18789"),
-                _ => panic!("未知提供者: {}", provider),
+                other => unreachable!("Unexpected provider: {}", other),
             }
         }
     }

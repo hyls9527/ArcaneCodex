@@ -322,7 +322,7 @@ export function GalleryPage({
                   file_path: r.file_path,
                   thumbnail_path: r.thumbnail_path || '',
                   file_name: r.file_name || String(r.image_id),
-                  ai_tags: r.tags ? JSON.stringify(r.tags) : undefined,
+                  ai_tags: r.tags,  // api.ts 已经解析为 string[]，无需再次 stringify
                   ai_status: 'completed' as const,
                   ai_category: r.category || '',
                   ai_description: r.description,

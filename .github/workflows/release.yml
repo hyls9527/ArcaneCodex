@@ -9,6 +9,10 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build-windows:
     name: Build Windows
@@ -36,7 +40,7 @@ jobs:
           workspaces: "src-tauri -> target"
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.5.25
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -82,7 +86,7 @@ jobs:
           workspaces: "src-tauri -> target"
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.5.25
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -138,7 +142,7 @@ jobs:
           workspaces: "src-tauri -> target"
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.5.25
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -185,7 +189,7 @@ jobs:
           path: artifacts
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2.6.2
         with:
           body_path: release_notes.md
           draft: true

@@ -25,6 +25,56 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ de
 const SettingsPage = lazy(() => import('./components/settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const KnowledgeGraphView = lazy(() => import('./components/gallery/KnowledgeGraphView').then(m => ({ default: m.default })))
 
+/**
+ * 安全解析 ai_tags 字段
+ * 处理三种情况：已经是数组、是 JSON 字符串、或其他类型
+ */
+function safeParseAiTags(aiTags: unknown): string[] | undefined {
+  if (aiTags === undefined || aiTags === null) {
+    return undefined
+  }
+  if (Array.isArray(aiTags)) {
+    return aiTags as string[]
+  }
+  if (typeof aiTags === 'string') {
+    try {
+      const parsed = JSON.parse(aiTags)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      console.warn('[App] Failed to parse ai_tags:', aiTags)
+      return []
+    }
+  }
+  console.warn('[App] Unexpected ai_tags type:', typeof aiTags)
+  return []
+}
+
+/**
+ * 安全解析 exif_data 字段
+ * 处理三种情况：已经是对象、是 JSON 字符串、或其他类型
+ */
+function safeParseExifData(exifData: unknown): Record<string, unknown> | undefined {
+  if (exifData === undefined || exifData === null) {
+    return undefined
+  }
+  if (typeof exifData === 'object' && !Array.isArray(exifData)) {
+    return exifData as Record<string, unknown>
+  }
+  if (typeof exifData === 'string') {
+    try {
+      const parsed = JSON.parse(exifData)
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {}
+    } catch {
+      console.warn('[App] Failed to parse exif_data:', exifData)
+      return {}
+    }
+  }
+  console.warn('[App] Unexpected exif_data type:', typeof exifData)
+  return {}
+}
+
 function App() {
   const { current: currentPage } = useStateRouter('gallery')
   const { theme } = useConfigStore()
@@ -208,20 +258,10 @@ function App() {
             width: viewingImage.width,
             height: viewingImage.height,
             file_size: viewingImage.file_size,
-            ai_tags: viewingImage.ai_tags
-              ? (Array.isArray(viewingImage.ai_tags)
-                  ? viewingImage.ai_tags
-                  : typeof viewingImage.ai_tags === 'string'
-                    ? JSON.parse(viewingImage.ai_tags)
-                    : [])
-              : undefined,
+            ai_tags: safeParseAiTags(viewingImage.ai_tags),
             ai_description: viewingImage.ai_description,
             ai_category: viewingImage.ai_category,
-            exif_data: viewingImage.exif_data
-              ? (typeof viewingImage.exif_data === 'string'
-                  ? JSON.parse(viewingImage.exif_data)
-                  : viewingImage.exif_data)
-              : undefined,
+            exif_data: safeParseExifData(viewingImage.exif_data),
           }}
           onClose={handleViewerClose}
           onDelete={handleViewerDelete}

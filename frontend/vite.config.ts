@@ -18,7 +18,7 @@ export default defineConfig({
   // 构建配置
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: process.env.NODE_ENV === 'development',
     minify: 'esbuild',
     rollupOptions: {
       output: {
