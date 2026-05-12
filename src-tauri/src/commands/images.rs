@@ -62,7 +62,11 @@ const SENSITIVE_DIRS: &[&str] = &["/usr/bin", "/usr/sbin", "/bin", "/sbin", "/et
 /// # 参考
 /// - [Rust Template Path Traversal Fix](https://github.com/EffortlessMetrics/Rust-Template/issues/10)
 /// - [path-security 库](https://github.com/redasgard/path-security)
-pub(crate) fn sanitize_path(base_dir: &Path, user_input: &str, must_exist: bool) -> Result<PathBuf, String> {
+pub(crate) fn sanitize_path(
+    base_dir: &Path,
+    user_input: &str,
+    must_exist: bool,
+) -> Result<PathBuf, String> {
     use std::path::Component;
 
     let input = user_input.trim();
@@ -102,9 +106,8 @@ pub(crate) fn sanitize_path(base_dir: &Path, user_input: &str, must_exist: bool)
     #[cfg(windows)]
     {
         const RESERVED_NAMES: &[&str] = &[
-            "con", "prn", "aux", "nul",
-            "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
-            "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+            "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+            "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
         ];
         let file_name = path
             .file_name()
@@ -182,17 +185,22 @@ pub(crate) fn sanitize_path(base_dir: &Path, user_input: &str, must_exist: bool)
 fn input_contains_encoded_traversal(input: &str) -> bool {
     // URL 编码的 ..
     let encoded_patterns = [
-        "%2e%2e", "%2E%2E",           // 标准 URL 编码
-        "%252e%252e",                 // 双重 URL 编码
-        "%c0%ae", "%C0%AE",           // UTF-8 overlong 编码
-        "..%2f", "..%5c",             // 混合编码
-        "%u002e%u002e",               // Unicode percent 编码
-        "&#46;&#46;",                  // HTML 实体编码
-        "\x2e\x2e",                   // Hex 编码
+        "%2e%2e",
+        "%2E%2E",     // 标准 URL 编码
+        "%252e%252e", // 双重 URL 编码
+        "%c0%ae",
+        "%C0%AE", // UTF-8 overlong 编码
+        "..%2f",
+        "..%5c",        // 混合编码
+        "%u002e%u002e", // Unicode percent 编码
+        "&#46;&#46;",   // HTML 实体编码
+        "\x2e\x2e",     // Hex 编码
     ];
 
     let input_lower = input.to_lowercase();
-    encoded_patterns.iter().any(|p| input_lower.contains(&p.to_lowercase()))
+    encoded_patterns
+        .iter()
+        .any(|p| input_lower.contains(&p.to_lowercase()))
 }
 
 /// 标准化路径（不要求文件存在）- 严格版本

@@ -173,7 +173,11 @@ mod tests {
         // 构造一个 v1 前缀的假密文，测试废弃逻辑
         // 原始漏洞代码使用了 14 字节的固定 Nonce（b"ac-kd-nonce-12"），
         // 违反了 AES-GCM 标准（应为 12 字节/96 位），已废弃
-        let fake_v1_encrypted = format!("{}{}", ENCRYPTION_PREFIX_V1, BASE64.encode(b"fake-ciphertext-data"));
+        let fake_v1_encrypted = format!(
+            "{}{}",
+            ENCRYPTION_PREFIX_V1,
+            BASE64.encode(b"fake-ciphertext-data")
+        );
 
         // v1 格式应返回空字符串（已废弃，不允许解密）
         let decrypted = decrypt_api_key(&fake_v1_encrypted);

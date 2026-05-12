@@ -71,9 +71,8 @@ fn validate_backup_restore_path(path: &str, must_exist: bool) -> Result<PathBuf,
     #[cfg(windows)]
     {
         const RESERVED_NAMES: &[&str] = &[
-            "con", "prn", "aux", "nul",
-            "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
-            "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+            "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+            "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
         ];
         let file_name = path_buf
             .file_name()
@@ -133,16 +132,18 @@ fn validate_backup_restore_path(path: &str, must_exist: bool) -> Result<PathBuf,
                 if parent.exists() {
                     // 验证父目录不是敏感系统目录
                     if is_system_sensitive_directory(parent) {
-                        return Err(AppError::validation(
-                            "安全限制: 不允许备份到系统敏感目录",
-                        ));
+                        return Err(AppError::validation("安全限制: 不允许备份到系统敏感目录"));
                     }
                     info!("备份路径验证通过: '{}'", input);
                     Ok(path_buf)
                 } else {
                     // 父目录不存在时，尝试规范化路径以捕获潜在问题
                     let normalized = normalize_path_for_backup(&path_buf)?;
-                    info!("备份路径验证通过(新建): '{}' -> '{}'", input, normalized.display());
+                    info!(
+                        "备份路径验证通过(新建): '{}' -> '{}'",
+                        input,
+                        normalized.display()
+                    );
                     Ok(normalized)
                 }
             } else {
@@ -159,12 +160,15 @@ fn validate_backup_restore_path(path: &str, must_exist: bool) -> Result<PathBuf,
 /// 检查输入是否包含编码后的路径遍历模式
 fn contains_encoded_traversal(input: &str) -> bool {
     let encoded_patterns = [
-        "%2e%2e", "%2E%2E",           // 标准 URL 编码
-        "%252e%252e",                 // 双重 URL 编码
-        "%c0%ae", "%C0%AE",           // UTF-8 overlong 编码
-        "..%2f", "..%5c",             // 混合编码
-        "%u002e%u002e",               // Unicode percent 编码
-        "&#46;&#46;",                  // HTML 实体编码
+        "%2e%2e",
+        "%2E%2E",     // 标准 URL 编码
+        "%252e%252e", // 双重 URL 编码
+        "%c0%ae",
+        "%C0%AE", // UTF-8 overlong 编码
+        "..%2f",
+        "..%5c",        // 混合编码
+        "%u002e%u002e", // Unicode percent 编码
+        "&#46;&#46;",   // HTML 实体编码
     ];
 
     let input_lower = input.to_lowercase();
@@ -193,7 +197,9 @@ fn is_system_sensitive_directory(path: &Path) -> bool {
 #[cfg(not(windows))]
 fn is_system_sensitive_directory(path: &Path) -> bool {
     const SENSITIVE_DIRS: &[&str] = &["/usr/bin", "/usr/sbin", "/bin", "/sbin", "/etc"];
-    SENSITIVE_DIRS.iter().any(|sensitive| path.starts_with(sensitive) || path == Path::new(sensitive))
+    SENSITIVE_DIRS
+        .iter()
+        .any(|sensitive| path.starts_with(sensitive) || path == Path::new(sensitive))
 }
 
 /// 标准化备份目标路径（不要求文件存在）
@@ -2996,11 +3002,7 @@ mod tests {
 
         for path in malicious_paths {
             let result = validate_backup_restore_path(path, false);
-            assert!(
-                result.is_err(),
-                "包含 '..' 的路径应被拒绝: {}",
-                path
-            );
+            assert!(result.is_err(), "包含 '..' 的路径应被拒绝: {}", path);
             let err = result.unwrap_err().to_string();
             assert!(
                 err.contains("..") || err.contains("遍历"),
@@ -3023,11 +3025,7 @@ mod tests {
             let result = validate_backup_restore_path(path, false);
             assert!(result.is_err(), "UNC 路径应被拒绝: {}", path);
             let err = result.unwrap_err().to_string();
-            assert!(
-                err.contains("UNC"),
-                "错误消息应提及 UNC, got: {}",
-                err
-            );
+            assert!(err.contains("UNC"), "错误消息应提及 UNC, got: {}", err);
         }
     }
 
@@ -3071,19 +3069,15 @@ mod tests {
     fn tc_settings_sec_007_validate_encoded_traversal() {
         // 编码后的路径遍历应被拒绝
         let encoded_paths = vec![
-            "%2e%2e/%2e%2e/etc/passwd",       // URL 编码 ..
-            "%252e%252e",                        // 双重编码 ..
-            "..%2f..%2fetc%2fpasswd",           // 混合编码
-            "%c0%ae%c0%ae/etc",                 // UTF-8 overlong 编码
+            "%2e%2e/%2e%2e/etc/passwd", // URL 编码 ..
+            "%252e%252e",               // 双重编码 ..
+            "..%2f..%2fetc%2fpasswd",   // 混合编码
+            "%c0%ae%c0%ae/etc",         // UTF-8 overlong 编码
         ];
 
         for path in encoded_paths {
             let result = validate_backup_restore_path(path, false);
-            assert!(
-                result.is_err(),
-                "编码后的路径遍历应被拒绝: {}",
-                path
-            );
+            assert!(result.is_err(), "编码后的路径遍历应被拒绝: {}", path);
         }
     }
 
@@ -3091,17 +3085,14 @@ mod tests {
     fn tc_settings_sec_008_validate_control_characters() {
         // 包含控制字符的路径应被拒绝
         let control_char_paths = vec![
-            "C:\\test\x00.zip",          // 空字节
-            "C:\\test\nbackup.zip",      // 换行符
-            "C:\x1B[31mbackup.zip",     // ANSI 转义序列
+            "C:\\test\x00.zip",     // 空字节
+            "C:\\test\nbackup.zip", // 换行符
+            "C:\x1B[31mbackup.zip", // ANSI 转义序列
         ];
 
         for path in &control_char_paths {
             let result = validate_backup_restore_path(path, false);
-            assert!(
-                result.is_err(),
-                "包含控制字符的路径应被拒绝"
-            );
+            assert!(result.is_err(), "包含控制字符的路径应被拒绝");
         }
     }
 
@@ -3112,11 +3103,7 @@ mod tests {
         let result = validate_backup_restore_path(&long_path, false);
         assert!(result.is_err(), "超长路径应被拒绝");
         let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("过长"),
-            "错误消息应提及路径过长, got: {}",
-            err
-        );
+        assert!(err.contains("过长"), "错误消息应提及路径过长, got: {}", err);
     }
 
     #[test]
@@ -3126,9 +3113,18 @@ mod tests {
 
         // 测试各种合法路径格式
         let valid_paths = vec![
-            temp_dir.path().join("backup.zip").to_string_lossy().to_string(),
-            temp_dir.path().join("subdir").join("data.enc").to_string_lossy().to_string(),
-            format!("{}\\{}", temp_dir.path().display(), "中文备份.zip"),  // 中文路径
+            temp_dir
+                .path()
+                .join("backup.zip")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("subdir")
+                .join("data.enc")
+                .to_string_lossy()
+                .to_string(),
+            format!("{}\\{}", temp_dir.path().display(), "中文备份.zip"), // 中文路径
         ];
 
         for path in valid_paths {
@@ -3146,10 +3142,7 @@ mod tests {
         let backup_file = temp_dir.path().join("existing_backup.zip");
         std::fs::write(&backup_file, b"fake backup data").unwrap();
 
-        let result = validate_backup_restore_path(
-            &backup_file.to_string_lossy().to_string(),
-            true,
-        );
+        let result = validate_backup_restore_path(&backup_file.to_string_lossy().to_string(), true);
 
         assert!(
             result.is_ok(),
@@ -3190,11 +3183,7 @@ mod tests {
 
         for path in reserved_names {
             let result = validate_backup_restore_path(path, false);
-            assert!(
-                result.is_err(),
-                "Windows 保留名称应被拒绝: {}",
-                path
-            );
+            assert!(result.is_err(), "Windows 保留名称应被拒绝: {}", path);
         }
     }
 
@@ -3215,11 +3204,7 @@ mod tests {
             // 即使路径不存在，如果父目录是敏感目录也应拒绝
             // （取决于实现，某些情况下可能因为路径不存在而通过）
             if Path::new(path).parent().map_or(false, |p| p.exists()) {
-                assert!(
-                    result.is_err(),
-                    "不应允许备份到系统敏感目录: {}",
-                    path
-                );
+                assert!(result.is_err(), "不应允许备份到系统敏感目录: {}", path);
             }
         }
     }
@@ -3230,20 +3215,38 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
 
         let normal_paths = vec![
-            temp_dir.path().join("my_backup.zip").to_string_lossy().to_string(),
-            temp_dir.path().join("2024").join("data").join("backup.enc").to_string_lossy().to_string(),
-            temp_dir.path().join("backup with spaces.zip").to_string_lossy().to_string(),
-            temp_dir.path().join("backup-with-dashes.zip").to_string_lossy().to_string(),
-            temp_dir.path().join("backup.with.dots.zip").to_string_lossy().to_string(),
+            temp_dir
+                .path()
+                .join("my_backup.zip")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("2024")
+                .join("data")
+                .join("backup.enc")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("backup with spaces.zip")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("backup-with-dashes.zip")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("backup.with.dots.zip")
+                .to_string_lossy()
+                .to_string(),
         ];
 
         for path in normal_paths {
             let result = validate_backup_restore_path(&path, false);
-            assert!(
-                result.is_ok(),
-                "正常用户路径应通过验证: {}",
-                path
-            );
+            assert!(result.is_ok(), "正常用户路径应通过验证: {}", path);
         }
     }
 
@@ -3254,9 +3257,6 @@ mod tests {
         let path_with_tab = "C:\\test\tbackup.zip";
         let result = validate_backup_restore_path(path_with_tab, false);
         // Tab 应该被允许（根据当前实现的规则：ch != '\t' 时才拒绝）
-        assert!(
-            result.is_ok(),
-            "Tab 字符应被允许（或根据策略调整）"
-        );
+        assert!(result.is_ok(), "Tab 字符应被允许（或根据策略调整）");
     }
 }
