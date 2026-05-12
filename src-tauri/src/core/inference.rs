@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::lm_studio::parse_ai_response;
 use crate::utils::error::{AppError, AppResult};
 use async_trait::async_trait;

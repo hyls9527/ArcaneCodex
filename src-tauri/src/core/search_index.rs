@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::db::Database;
 use crate::utils::error::{AppError, AppResult};
 use jieba_rs::Jieba;

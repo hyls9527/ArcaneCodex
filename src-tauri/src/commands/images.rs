@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::db::Database;
 use crate::core::image::ImageProcessor;
 use crate::core::search_index::clear_search_cache;

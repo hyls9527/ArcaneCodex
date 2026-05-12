@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::inference::AIResult;
 use crate::utils::error::{AppError, AppResult};
 use reqwest::Client;

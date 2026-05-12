@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;

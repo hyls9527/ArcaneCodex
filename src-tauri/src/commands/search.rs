@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::db::Database;
 use crate::core::search_index::{SearchFilters, SearchIndexBuilder, SearchResult};
 use crate::utils::error::{AppError, AppResult};

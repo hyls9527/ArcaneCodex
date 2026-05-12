@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use regex::Regex;
 use std::fmt;
 use std::sync::OnceLock;

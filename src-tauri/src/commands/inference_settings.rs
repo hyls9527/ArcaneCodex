@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::db::Database;
 use crate::core::inference::InferenceProviderType;
 use crate::utils::crypto;

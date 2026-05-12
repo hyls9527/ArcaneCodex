@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::db::Database;
 use crate::core::dedup::{
     similarity_to_hamming, DeduplicationScanner, DuplicateGroup, ScanResult as CoreScanResult,

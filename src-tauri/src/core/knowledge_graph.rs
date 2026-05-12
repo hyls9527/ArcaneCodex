@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 

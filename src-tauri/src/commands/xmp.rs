@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::db::Database;
 use crate::core::xmp_service::{XmpMetadata, XmpService};
 use crate::utils::error::{AppError, AppResult};

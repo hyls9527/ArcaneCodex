@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::time::Instant;
 

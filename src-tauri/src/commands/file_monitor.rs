@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::file_watcher::FileWatcherService;
 use crate::utils::error::{AppError, AppResult};
 use std::path::PathBuf;

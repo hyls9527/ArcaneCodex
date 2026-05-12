@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::circuit_breaker::CircuitBreaker;
 use crate::core::db::Database;
 use crate::core::inference::{InferenceProvider, ProviderConfig, ProviderFactory};

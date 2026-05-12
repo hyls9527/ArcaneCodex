@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

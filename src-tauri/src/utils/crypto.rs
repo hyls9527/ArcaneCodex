@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,

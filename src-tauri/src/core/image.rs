@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::utils::error::{AppError, AppResult};
 use image::GenericImageView;
 use std::fs::File;

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::core::ai_queue::AITaskQueue;
 use crate::core::db::Database;
 use crate::utils::error::AppResult;
