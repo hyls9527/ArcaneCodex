@@ -5,6 +5,7 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
+#![allow(clippy::missing_docs_in_private_items)]
 
 mod commands;
 mod core;

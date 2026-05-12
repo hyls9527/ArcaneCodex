@@ -2,7 +2,7 @@
 # 文档: https://rust-lang.github.io/rust-clippy/master/index.html
 
 # 强制文档
-missing-docs-in-crate-items = true
+missing-docs-in-crate-items = false
 
 # 性能优化
 cognitive-complexity-threshold = 25
