@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "ArcaneCodex",
   "version": "1.0.0-rc",
   "identifier": "com.arcanecodex.app",
@@ -11,7 +12,7 @@
   "app": {
     "withGlobalTauri": false,
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:1234 http://127.0.0.1:1234; img-src 'self' asset: https://asset.localhost; script-src 'self'; style-src 'self'; font-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
+      "csp": "default-src 'self'; connect-src 'self' https://open.bigmodel.cn https://api.openai.com https://openrouter.ai/api http://localhost:1234 http://127.0.0.1:1234 http://localhost:11434 http://127.0.0.1:11434 http://localhost:18789 http://127.0.0.1:18789; img-src 'self' asset: https://asset.localhost data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
       "assetProtocol": {
         "enable": true,
         "scope": {
@@ -30,6 +31,9 @@
             "core:window:allow-maximize",
             "core:window:allow-unmaximize",
             "core:window:allow-show",
+            "core:window:allow-set-title",
+            "core:window:allow-center",
+            "core:window:allow-set-size",
             "dialog:default",
             "dialog:allow-open",
             "dialog:allow-save",

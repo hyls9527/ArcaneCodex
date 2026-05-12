@@ -1,9 +1,11 @@
 #![allow(missing_docs)]
+use crate::commands::images::sanitize_path;
 use crate::core::ai_queue::AITaskQueue;
 use crate::core::db::Database;
 use crate::utils::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
 use tauri::State;
 use tracing::warn;
 
@@ -229,6 +231,11 @@ pub fn batch_export(
         return Err(AppError::validation("image_ids 不能为空".to_string()));
     }
 
+    // 安全验证：防止路径遍历攻击
+    let base_dir = get_user_writable_base_dir();
+    let validated_path = sanitize_path(&base_dir, &request.export_path, false)
+        .map_err(|e| AppError::validation(format!("导出路径无效: {}", e)))?;
+
     let conn = db.open_connection()?;
 
     let mut export_data = Vec::new();
@@ -292,7 +299,7 @@ pub fn batch_export(
         ExportFormat::Json => {
             let json_content = serde_json::to_string_pretty(&export_data)
                 .map_err(|e| AppError::validation(format!("JSON 序列化失败: {}", e)))?;
-            std::fs::write(&request.export_path, json_content)
+            std::fs::write(&validated_path, json_content)
                 .map_err(|e| AppError::validation(format!("文件写入失败: {}", e)))?;
         }
         ExportFormat::Csv => {
@@ -303,7 +310,7 @@ pub fn batch_export(
                     record.image_id, record.file_path, record.file_name, record.file_size
                 ));
             }
-            std::fs::write(&request.export_path, csv_content)
+            std::fs::write(&validated_path, csv_content)
                 .map_err(|e| AppError::validation(format!("文件写入失败: {}", e)))?;
         }
         ExportFormat::Xml => {
@@ -316,18 +323,18 @@ pub fn batch_export(
                 ));
             }
             xml_content.push_str("</records>\n");
-            std::fs::write(&request.export_path, xml_content)
+            std::fs::write(&validated_path, xml_content)
                 .map_err(|e| AppError::validation(format!("文件写入失败: {}", e)))?;
         }
     }
 
-    let file_size = std::fs::metadata(&request.export_path)
+    let file_size = std::fs::metadata(&validated_path)
         .map_err(|e| AppError::validation(format!("获取文件大小失败: {}", e)))?
         .len();
 
     Ok(BatchExportResult {
         exported_count,
-        export_path: request.export_path,
+        export_path: validated_path.to_string_lossy().to_string(),
         file_size,
     })
 }
@@ -563,8 +570,12 @@ pub fn get_accuracy_trend(db: State<'_, Database>, days: Option<i64>) -> AppResu
              ORDER BY date ASC",
         )?;
 
+        // 安全说明：days 是 i64 类型，format! 仅用于构建 SQLite DATE 函数参数
+        // 最终通过参数化查询传递，不存在 SQL 注入风险
+        let days_param = format!("-{} days", days);
+
         let results: Vec<AccuracyDataPoint> = stmt
-            .query_map(rusqlite::params![format!("-{} days", days)], |row| {
+            .query_map(rusqlite::params![days_param], |row| {
                 let total: i64 = row.get(1)?;
                 let correct: i64 = row.get(2)?;
                 let accuracy = if total > 0 {
@@ -663,6 +674,18 @@ fn get_log_path() -> String {
     std::env::var("APPDATA")
         .map(|appdata| format!("{}\\ArcaneCodex\\logs\\app.log", appdata))
         .unwrap_or_else(|_| "./logs/app.log".to_string())
+}
+
+/// 获取用户可写的基础目录，用于路径遍历防护
+/// 优先级：USERPROFILE > HOME > 当前目录
+fn get_user_writable_base_dir() -> PathBuf {
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        PathBuf::from(user_profile)
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home)
+    } else {
+        PathBuf::from(".")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -799,11 +822,16 @@ pub fn export_logs(export_path: String, level_filter: Option<String>) -> AppResu
         return Err(AppError::internal("日志文件不存在".to_string()));
     }
 
+    // 安全验证：防止路径遍历攻击
+    let base_dir = get_user_writable_base_dir();
+    let validated_path = sanitize_path(&base_dir, &export_path, false)
+        .map_err(|e| AppError::validation(format!("日志导出路径无效: {}", e)))?;
+
     let source = std::fs::File::open(&log_path)
         .map_err(|e| AppError::internal(format!("无法打开日志文件: {}", e)))?;
     let reader = BufReader::new(source);
 
-    let target = std::fs::File::create(&export_path)
+    let target = std::fs::File::create(&validated_path)
         .map_err(|e| AppError::internal(format!("无法创建导出文件: {}", e)))?;
     let mut writer = std::io::BufWriter::new(target);
 

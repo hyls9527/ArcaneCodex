@@ -80,27 +80,14 @@ pub fn decrypt_api_key(ciphertext: &str) -> String {
                 String::new()
             }
         }
-    } else if let Some(encoded) = ciphertext.strip_prefix(ENCRYPTION_PREFIX_V1) {
-        let key = derive_key();
-        let cipher = Aes256Gcm::new_from_slice(&key).expect("valid key length");
-        let nonce = Nonce::from_slice(b"ac-kd-nonce-12");
-
-        match BASE64.decode(encoded) {
-            Ok(data) => match cipher.decrypt(nonce, data.as_ref()) {
-                Ok(plaintext) => String::from_utf8(plaintext).unwrap_or_else(|e| {
-                    warn!("API Key v1 解密 UTF-8 转换失败，已返回空值: {}", e);
-                    String::new()
-                }),
-                Err(e) => {
-                    warn!("API Key v1 解密失败，已返回空值，请重新配置 API Key: {}", e);
-                    String::new()
-                }
-            },
-            Err(e) => {
-                warn!("API Key v1 Base64 解码失败，已返回空值: {}", e);
-                String::new()
-            }
-        }
+    } else if ciphertext.starts_with(ENCRYPTION_PREFIX_V1) {
+        // ❌ 安全漏洞：v1 使用固定 Nonce (ac-kd-nonce-12)，违反 NIST SP 800-38D 标准
+        // 已废弃，不允许解密。用户必须使用 v2 重新加密。
+        warn!(
+            "拒绝解密 v1 格式密文（固定 Nonce 安全漏洞）。请使用 v2 格式重新加密此备份。原始密文前缀: {}",
+            &ciphertext[..ciphertext.len().min(20)]
+        );
+        String::new()
     } else {
         ciphertext.to_string()
     }
@@ -108,7 +95,7 @@ pub fn decrypt_api_key(ciphertext: &str) -> String {
 
 #[allow(dead_code)]
 pub fn is_encrypted(value: &str) -> bool {
-    value.starts_with(ENCRYPTION_PREFIX_V1) || value.starts_with(ENCRYPTION_PREFIX_V2)
+    value.starts_with(ENCRYPTION_PREFIX_V2)
 }
 
 #[cfg(test)]
@@ -154,8 +141,8 @@ mod tests {
 
     #[test]
     fn test_is_encrypted() {
-        assert!(is_encrypted("enc:v1:somebase64data"));
         assert!(is_encrypted("enc:v2:somebase64data"));
+        assert!(!is_encrypted("enc:v1:somebase64data")); // v1 已废弃
         assert!(!is_encrypted("plain-api-key"));
         assert!(!is_encrypted(""));
     }
@@ -182,16 +169,15 @@ mod tests {
     }
 
     #[test]
-    fn test_v1_backward_compatibility() {
-        let key = derive_key();
-        let cipher = Aes256Gcm::new_from_slice(&key).expect("valid key length");
-        let nonce = Nonce::from_slice(b"ac-kd-nonce-12");
-        let original = "legacy-api-key-value";
-        let ciphertext = cipher.encrypt(nonce, original.as_bytes()).unwrap();
-        let v1_encrypted = format!("{}{}", ENCRYPTION_PREFIX_V1, BASE64.encode(&ciphertext));
+    fn test_v1_deprecated_returns_empty() {
+        // 构造一个 v1 前缀的假密文，测试废弃逻辑
+        // 原始漏洞代码使用了 14 字节的固定 Nonce（b"ac-kd-nonce-12"），
+        // 违反了 AES-GCM 标准（应为 12 字节/96 位），已废弃
+        let fake_v1_encrypted = format!("{}{}", ENCRYPTION_PREFIX_V1, BASE64.encode(b"fake-ciphertext-data"));
 
-        let decrypted = decrypt_api_key(&v1_encrypted);
-        assert_eq!(decrypted, original, "v1 加密的旧密文应能正确解密");
+        // v1 格式应返回空字符串（已废弃，不允许解密）
+        let decrypted = decrypt_api_key(&fake_v1_encrypted);
+        assert_eq!(decrypted, "", "v1 格式密文应返回空字符串（已废弃）");
     }
 
     #[test]

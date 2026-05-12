@@ -106,9 +106,9 @@ export function AIConfig({ onChange }: { onChange?: () => void }) {
       const detail = await invoke<string>('test_inference_connection')
       setTestResult('success')
       setTestDetail(detail)
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTestResult('error')
-      setTestDetail(err?.toString?.() || '')
+      setTestDetail(err instanceof Error ? err.message : (typeof err === 'string' ? err : String(err)))
     } finally {
       setTesting(false)
     }

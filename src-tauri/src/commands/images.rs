@@ -46,62 +46,162 @@ const SENSITIVE_DIRS: &[&str] = &[
 #[cfg(not(windows))]
 const SENSITIVE_DIRS: &[&str] = &["/usr/bin", "/usr/sbin", "/bin", "/sbin", "/etc"];
 
-/// 路径安全检查 - 防止路径穿越攻击
+/// 路径安全检查 - 防止路径穿越攻击（深度防护版）
 ///
-/// # 安全机制
-/// 1. 使用 canonicalize() 规范化路径，解析所有 `..` 和符号链接
-/// 2. 确保规范化后的路径仍在允许的基目录内
-/// 3. 返回规范化后的绝对路径供后续使用
-#[expect(dead_code)]
-fn sanitize_path(base_dir: &Path, user_input: &str) -> Result<PathBuf, String> {
-    let input_path = PathBuf::from(user_input);
+/// # 安全机制（多层防御）
+/// 1. **组件级检查**: 在解析前拒绝包含 `..` 的路径
+/// 2. **规范化验证**: 使用 canonicalize() 解析所有符号链接和相对路径
+/// 3. **边界确认**: 确保最终路径严格在允许的基目录内
+/// 4. **特殊路径拦截**: 阻止 Windows UNC 路径、设备路径、NTFS 流等
+///
+/// # 参数
+/// - `base_dir`: 允许的根目录（安全边界）
+/// - `user_input`: 用户输入的路径
+/// - `must_exist`: 路径是否必须存在（用于区分导入/导出场景）
+///
+/// # 参考
+/// - [Rust Template Path Traversal Fix](https://github.com/EffortlessMetrics/Rust-Template/issues/10)
+/// - [path-security 库](https://github.com/redasgard/path-security)
+pub(crate) fn sanitize_path(base_dir: &Path, user_input: &str, must_exist: bool) -> Result<PathBuf, String> {
+    use std::path::Component;
 
-    // 规范化路径（解析 .. 和符号链接）
-    // 注意：canonicalize 要求路径必须存在，对于目标目录我们使用不同的策略
-    let canonical = match input_path.canonicalize() {
-        Ok(p) => p,
-        Err(e) => {
-            warn!("路径规范化失败: {} - 错误: {}", user_input, e);
+    let input = user_input.trim();
 
-            // 对于不存在的路径，尝试基于 base_dir 解析相对路径
-            if input_path.is_relative() {
-                let resolved = base_dir.join(&input_path);
-                // 检查解析后的路径是否尝试逃逸 base_dir
-                let normalized = normalize_path(&resolved)?;
-                if !normalized.starts_with(base_dir) {
-                    return Err(
-                        "Path traversal detected: relative path escapes base directory".to_string(),
-                    );
-                }
-                return Ok(normalized);
+    // ===== 层1: 输入预处理 =====
+    // 空路径拒绝
+    if input.is_empty() {
+        return Err("路径不能为空".to_string());
+    }
+
+    // 路径长度限制（Windows MAX_PATH = 260，留余量）
+    if input.len() > 240 {
+        return Err(format!("路径过长 ({} 字符，最大 240)", input.len()));
+    }
+
+    let path = PathBuf::from(input);
+
+    // ===== 层2: 特殊路径模式拦截 =====
+    let input_lower = input.to_lowercase();
+
+    // Windows UNC 路径拦截 (\\server\share, //server/share)
+    if input.starts_with("\\\\") || input.starts_with("//") {
+        return Err("不允许使用 UNC 路径".to_string());
+    }
+
+    // Windows 设备路径拦截 (\\.\COM1, \\?\C:, etc.)
+    if input_lower.contains("\\\\.\\") || input_lower.contains("\\\\?\\") {
+        return Err("不允许使用设备路径".to_string());
+    }
+
+    // NTFS Alternate Data Streams 拦截 (file.txt::$DATA)
+    if input.contains("::$") {
+        return Err("检测到 NTFS 数据流攻击".to_string());
+    }
+
+    // Windows 保留名称拦截 (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    #[cfg(windows)]
+    {
+        const RESERVED_NAMES: &[&str] = &[
+            "con", "prn", "aux", "nul",
+            "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+            "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+        ];
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if RESERVED_NAMES.contains(&file_name.as_str()) {
+            return Err(format!("使用 Windows 保留文件名: {}", file_name));
+        }
+    }
+
+    // ===== 层3: 组件级遍历检查 =====
+    // 在任何规范化之前，先检查原始路径组件
+    let has_parent_dir = path.components().any(|c| matches!(c, Component::ParentDir));
+    if has_parent_dir {
+        warn!("路径遍历检测(组件级): {}", user_input);
+        return Err("路径不允许包含 '..' 目录遍历序列".to_string());
+    }
+
+    // 检查可疑编码模式（URL 编码、Unicode 同形字等）
+    if input.contains("%2e") || input_contains_encoded_traversal(input) {
+        return Err("检测到编码后的路径遍历尝试".to_string());
+    }
+
+    // ===== 层4: 规范化 + 边界验证 =====
+    let canonical = if must_exist {
+        // 已存在路径：使用 canonicalize（解析符号链接）
+        match path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("路径规范化失败: {} - 错误: {}", user_input, e);
+                return Err(format!("无效路径: 无法解析 '{}'", user_input));
             }
+        }
+    } else {
+        // 不存在的目标路径：使用逻辑规范化
+        let resolved = if path.is_absolute() {
+            path.clone()
+        } else {
+            base_dir.join(&path)
+        };
+        normalize_path_strict(&resolved)?
+    };
 
-            return Err(format!(
-                "Invalid path: cannot canonicalize '{}'",
-                user_input
-            ));
+    // ===== 层5: 最终边界确认 =====
+    // 获取 base_dir 的规范形式
+    let canonical_base = match base_dir.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            // base_dir 不存在时使用其本身（罕见情况，如首次运行）
+            base_dir.to_path_buf()
         }
     };
 
-    // 确保规范化后的路径仍在允许的目录内
-    if !canonical.starts_with(base_dir) {
-        warn!(
-            "路径穿越检测: 输入={}, 规范化后={}, 基目录={}",
+    // 严格检查：规范化后的路径必须以 base_dir 为前缀
+    if !canonical.starts_with(&canonical_base) {
+        error!(
+            "路径穿越检测: 输入='{}', 规范化='{}', 基目录='{}'",
             user_input,
             canonical.display(),
-            base_dir.display()
+            canonical_base.display()
         );
-        return Err("Path traversal detected".to_string());
+        return Err("安全限制: 路径超出允许的范围".to_string());
     }
 
+    info!(
+        "路径安全验证通过: '{}' -> '{}'",
+        user_input,
+        canonical.display()
+    );
     Ok(canonical)
 }
 
-/// 标准化路径（不要求文件存在）- 用于处理不存在的目标路径
-fn normalize_path(path: &Path) -> Result<PathBuf, String> {
+/// 检查输入是否包含编码后的路径遍历模式
+fn input_contains_encoded_traversal(input: &str) -> bool {
+    // URL 编码的 ..
+    let encoded_patterns = [
+        "%2e%2e", "%2E%2E",           // 标准 URL 编码
+        "%252e%252e",                 // 双重 URL 编码
+        "%c0%ae", "%C0%AE",           // UTF-8 overlong 编码
+        "..%2f", "..%5c",             // 混合编码
+        "%u002e%u002e",               // Unicode percent 编码
+        "&#46;&#46;",                  // HTML 实体编码
+        "\x2e\x2e",                   // Hex 编码
+    ];
+
+    let input_lower = input.to_lowercase();
+    encoded_patterns.iter().any(|p| input_lower.contains(&p.to_lowercase()))
+}
+
+/// 标准化路径（不要求文件存在）- 严格版本
+/// 用于处理不存在的目标路径（如导出目录）
+fn normalize_path_strict(path: &Path) -> Result<PathBuf, String> {
     use std::path::Component;
 
     let mut normalized = PathBuf::new();
+    let mut parent_count = 0i32;
 
     for component in path.components() {
         match component {
@@ -115,9 +215,12 @@ fn normalize_path(path: &Path) -> Result<PathBuf, String> {
                 normalized.push(component.as_os_str());
             }
             Component::ParentDir => {
-                // 尝试弹出上一级，如果无法弹出则保持（会在后续检查中被拦截）
-                if !normalized.pop() {
-                    normalized.push(component.as_os_str());
+                // 弹出上一级目录
+                if normalized.pop() {
+                    parent_count -= 1;
+                } else {
+                    // 无法弹出说明尝试逃逸根目录
+                    return Err("路径解析结果超出根目录边界".to_string());
                 }
             }
             Component::CurDir => {
@@ -127,7 +230,68 @@ fn normalize_path(path: &Path) -> Result<PathBuf, String> {
         }
     }
 
+    // 如果最终弹出次数过多，可能是恶意构造
+    if parent_count.abs() > 10 {
+        return Err("路径包含过多的目录层级跳转".to_string());
+    }
+
     Ok(normalized)
+}
+
+/// 验证导入路径的安全性
+///
+/// import_images 允许从用户指定的任意位置导入文件（这是设计意图），
+/// 但必须拒绝明显的恶意路径模式。
+///
+/// # 拒绝条件
+/// - UNC 路径 (\\server\share)
+/// - Windows 设备路径 (\\.\, \\?\)
+/// - NTFS 数据流 (::$DATA)
+/// - 路径长度超过限制
+/// - 包含空字节或控制字符
+fn validate_import_path(path: &Path) -> Result<(), String> {
+    let path_str = path.to_string_lossy();
+
+    // 空路径检查
+    if path_str.trim().is_empty() {
+        return Err("导入路径为空".to_string());
+    }
+
+    // 路径长度限制
+    if path_str.len() > 240 {
+        return Err(format!("导入路径过长: {} 字符", path_str.len()));
+    }
+
+    let path_lower = path_str.to_lowercase();
+
+    // UNC 路径拦截（网络路径可能存在安全风险）
+    if path_str.starts_with("\\\\") || path_str.starts_with("//") {
+        return Err("不允许从 UNC 网络路径导入".to_string());
+    }
+
+    // Windows 设备路径拦截
+    if path_lower.contains("\\\\.\\") || path_lower.contains("\\\\?\\") {
+        return Err("检测到设备路径，不允许导入".to_string());
+    }
+
+    // NTFS Alternate Data Streams 拦截
+    if path_str.contains("::$") {
+        return Err("检测到 NTFS 数据流，不允许导入".to_string());
+    }
+
+    // 编码后的遍历序列拦截
+    if input_contains_encoded_traversal(&path_str) {
+        return Err("检测到编码后的路径遍历尝试".to_string());
+    }
+
+    // 控制字符和空字节检查
+    for ch in path_str.chars() {
+        if ch.is_control() && ch != '\t' {
+            return Err("路径包含非法控制字符".to_string());
+        }
+    }
+
+    Ok(())
 }
 
 /// 检查是否为系统敏感目录
@@ -576,6 +740,19 @@ pub async fn import_images(
 
     for (index, path_str) in expanded_paths.iter().enumerate() {
         let file_path = Path::new(path_str);
+
+        // ========== 导入路径安全预检 ==========
+        // import_images 允许从任意位置导入（设计意图），但必须拒绝恶意路径
+        if let Err(e) = validate_import_path(file_path) {
+            warn!("导入路径安全检查失败: {} - {}", path_str, e);
+            result.error_count += 1;
+            result.errors.push(ImportError {
+                file_path: path_str.clone(),
+                reason: e,
+            });
+            continue;
+        }
+
         let canonical_path = match file_path.canonicalize() {
             Ok(p) => p,
             Err(e) => {
@@ -1215,23 +1392,27 @@ pub async fn archive_image(
         return Err(AppError::validation(format!("源文件不存在: {}", file_path)));
     }
 
-    // 安全检查：验证源路径是否为有效路径（防止恶意构造的路径）
-    // 注意：archive_image 的源文件来自数据库记录，这里主要防止数据库被篡改的情况
-    match source.canonicalize() {
+    // ========== 安全检查：源路径验证（防止数据库被篡改注入恶意路径） ==========
+    // archive_image 的源文件来自数据库记录，必须验证路径合法性
+    // 使用 sanitize_path 验证源路径不包含遍历序列
+    match sanitize_path(source, &file_path, true) {
         Ok(canonical_source) => {
-            // 额外日志记录规范化后的路径
             info!(
-                "归档源路径已规范化: {} -> {}",
+                "归档源路径安全验证通过 (ID: {}): {} -> {}",
+                id,
                 file_path,
                 canonical_source.display()
             );
         }
         Err(e) => {
-            warn!(
-                "归档源路径无法规范化 (ID: {}): {} - 错误: {}",
+            error!(
+                "归档安全检查失败 (ID: {}): 路径 '{}' 验证未通过 - {}",
                 id, file_path, e
             );
-            // 对于不存在的符号链接等情况，继续允许操作（因为上面已经检查 exists）
+            return Err(AppError::validation(format!(
+                "安全限制: 源路径验证失败 - {}",
+                e
+            )));
         }
     }
 
@@ -1312,55 +1493,22 @@ pub async fn safe_export(
 
     let conn = db.open_connection().map_err(AppError::database)?;
 
-    // ========== 安全检查 1: 路径穿越防护 ==========
-    // 使用 canonicalize 规范化目标目录路径
+    // ========== 安全检查 1: 路径穿越防护（使用统一验证函数） ==========
     let dest_path = Path::new(&dest_dir);
 
-    // 尝试规范化目标目录（如果已存在）
-    let normalized_dest = if dest_path.exists() {
-        match dest_path.canonicalize() {
-            Ok(canonical) => canonical,
-            Err(e) => {
-                error!("目标目录规范化失败: {} - 错误: {}", dest_dir, e);
-                return Err(AppError::validation(format!(
-                    "无效的目标目录: 无法规范化路径 '{}'",
-                    dest_dir
-                )));
-            }
-        }
-    } else {
-        // 目标目录不存在时，使用 normalize_path 进行逻辑规范化（不要求存在）
-        match normalize_path(dest_path) {
-            Ok(normalized) => normalized,
-            Err(e) => {
-                error!("目标目录标准化失败: {}", e);
-                return Err(AppError::validation(format!("无效的目标路径: {}", e)));
-            }
+    // 使用 sanitize_path 进行深度路径验证
+    // 导出目标目录可能不存在，所以 must_exist=false
+    let normalized_dest = match sanitize_path(dest_path, &dest_dir, false) {
+        Ok(p) => p,
+        Err(e) => {
+            error!("导出目标目录安全验证失败: {} - 原因: {}", dest_dir, e);
+            return Err(AppError::validation(format!("无效的目标路径: {}", e)));
         }
     };
-
-    // 安全检查：确保目标路径不包含可疑的路径穿越模式
-    let dest_str_lower = dest_dir.to_lowercase();
-    if dest_str_lower.contains("..")
-        || dest_str_lower.contains("/../")
-        || dest_str_lower.contains("\\..\\")
-    {
-        warn!("检测到路径穿越尝试: {}", dest_dir);
-        return Err(AppError::validation(
-            "目标路径包含非法字符: 检测到路径穿越模式".to_string(),
-        ));
-    }
 
     // ========== 安全检查 2: 敏感目录保护 ==========
-    // 检查是否为系统敏感目录（Windows: C:\Windows, C:\Program Files 等）
-    let dest_for_check = if normalized_dest.exists() {
-        &normalized_dest
-    } else {
-        dest_path
-    };
-
-    if is_sensitive_directory(dest_for_check) {
-        error!("拒绝导出到系统敏感目录: {}", dest_for_check.display());
+    if is_sensitive_directory(&normalized_dest) {
+        error!("拒绝导出到系统敏感目录: {}", normalized_dest.display());
         return Err(AppError::validation(
             "安全限制: 不允许导出到系统敏感目录".to_string(),
         ));
