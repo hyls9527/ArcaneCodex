@@ -1381,7 +1381,7 @@ mod tests {
             return Err(AppError::config("Backup file not found".to_string()));
         }
 
-        let zip_file = std::fs::File::open(&backup_path)
+        let zip_file = std::fs::File::open(backup_path)
             .map_err(|e| AppError::config(format!("Failed to open backup file: {}", e)))?;
 
         let mut archive = ZipArchive::new(zip_file)
@@ -3142,7 +3142,7 @@ mod tests {
         let backup_file = temp_dir.path().join("existing_backup.zip");
         std::fs::write(&backup_file, b"fake backup data").unwrap();
 
-        let result = validate_backup_restore_path(&backup_file.to_string_lossy().to_string(), true);
+        let result = validate_backup_restore_path(backup_file.to_string_lossy().as_ref(), true);
 
         assert!(
             result.is_ok(),
@@ -3203,7 +3203,7 @@ mod tests {
             let result = validate_backup_restore_path(path, false);
             // 即使路径不存在，如果父目录是敏感目录也应拒绝
             // （取决于实现，某些情况下可能因为路径不存在而通过）
-            if Path::new(path).parent().map_or(false, |p| p.exists()) {
+            if Path::new(path).parent().is_some_and(|p| p.exists()) {
                 assert!(result.is_err(), "不应允许备份到系统敏感目录: {}", path);
             }
         }

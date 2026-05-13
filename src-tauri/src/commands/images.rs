@@ -1956,7 +1956,7 @@ mod tests {
             .expect("query preparation should succeed");
 
         let rows = stmt
-            .query_map(rusqlite::params![10, 100], |row| Ok(row.get::<_, i64>(0)?))
+            .query_map(rusqlite::params![10, 100], |row| row.get::<_, i64>(0))
             .expect("query execution should succeed");
 
         let results: Vec<_> = rows.filter_map(|r| r.ok()).collect();
