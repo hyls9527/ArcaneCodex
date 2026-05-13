@@ -31,7 +31,7 @@ export default defineConfig([
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-empty-object-type': 'off',
       
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-console': ['warn', { allow: ['warn', 'error', 'debug'] }],
       'prefer-const': 'error',
       'no-var': 'error',
       'no-empty': 'off',

@@ -27,9 +27,13 @@ export interface ImportResult {
 }
 
 export async function importImages(filePaths: string[]): Promise<ImportResult> {
-  console.log('[api] importImages called with:', filePaths)
+  if (import.meta.env.DEV) {
+    console.debug('[api] importImages called with:', filePaths)
+  }
   const result = await invoke<ImportResult>('import_images', { filePaths })
-  console.log('[api] importImages result:', result)
+  if (import.meta.env.DEV) {
+    console.debug('[api] importImages result:', result)
+  }
   // 如果有错误，抛出包含详细信息的错误
   if (result.error_count > 0) {
     const errorDetails = result.errors.map(e => `${e.file_path}: ${e.reason}`).join('\n')

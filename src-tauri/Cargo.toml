@@ -79,7 +79,7 @@ xmpkit = "0.1"
 xmp-writer = "0.3"
 
 # 文件监控
-notify = { version = "7", features = ["macos_kqueue"] }
+notify = "7"
 
 # AI 推理引擎 - ONNX Runtime
 ort = { version = "2.0.0-rc.12", features = ["download-binaries", "copy-dylibs"] }

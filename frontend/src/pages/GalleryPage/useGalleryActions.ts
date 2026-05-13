@@ -46,9 +46,13 @@ export function useGalleryActions({
   const handleFilesSelected = useCallback(async (paths: string[]) => {
     if (paths.length === 0) return
     try {
-      console.log('[Gallery] Importing paths:', paths)
+      if (import.meta.env.DEV) {
+        console.debug('[Gallery] Importing paths:', paths)
+      }
       const result = await importImages(paths)
-      console.log('[Gallery] importImages result:', result)
+      if (import.meta.env.DEV) {
+        console.debug('[Gallery] importImages result:', result)
+      }
       await onLoadImages()
 
       if (result.success_count > 0) {

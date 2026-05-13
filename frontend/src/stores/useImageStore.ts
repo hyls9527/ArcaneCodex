@@ -97,15 +97,21 @@ export const useImageStore = create<ImageState>()(
         const hasFilters = filters.ai_status || filters.category || filters.date_from || filters.date_to || (filters.tags && filters.tags.length > 0)
         try {
           set({ loading: true, error: null })
-          console.log('[ImageStore] loadImages called:', { page, pageSize, hasFilters, filters })
+          if (import.meta.env.DEV) {
+            console.debug('[ImageStore] loadImages called:', { page, pageSize, hasFilters, filters })
+          }
           const result = await getImages({
             page,
             page_size: pageSize,
             filters: hasFilters ? filters : undefined,
           })
-          console.log('[ImageStore] getImages result:', JSON.stringify(result)?.substring(0, 500))
+          if (import.meta.env.DEV) {
+            console.debug('[ImageStore] getImages result:', JSON.stringify(result)?.substring(0, 500))
+          }
           if (result && result.images && Array.isArray(result.images)) {
-            console.log('[ImageStore] Setting images count:', result.images.length)
+            if (import.meta.env.DEV) {
+              console.debug('[ImageStore] Setting images count:', result.images.length)
+            }
             set({ images: result.images, loading: false })
           } else {
             console.warn('[ImageStore] Invalid result format:', result)

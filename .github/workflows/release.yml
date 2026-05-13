@@ -8,6 +8,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
+  # 提前切换到 Node.js 24，避免 2026-06-02 强制升级导致的问题
+  # 参考: https://github.blog/changelog/2025-02-26-node-js-20-actions-deprecation/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: write

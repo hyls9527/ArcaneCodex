@@ -72,6 +72,39 @@ function parseConfigValue(key: ConfigKey, value: string): unknown {
   }
 }
 
+/**
+ * Maps a config key and its parsed value to the corresponding ConfigState field.
+ * Eliminates duplicated switch-case in loadConfigs and saveConfigs.
+ */
+function applyConfigToState(key: ConfigKey, parsedValue: unknown): Partial<ConfigState> {
+  switch (key) {
+    case CONFIG_KEYS.LM_STUDIO_URL:
+      return { lmStudioUrl: parsedValue as string }
+    case CONFIG_KEYS.AI_CONCURRENCY:
+      return { aiConcurrency: parsedValue as number }
+    case CONFIG_KEYS.AI_TIMEOUT:
+      return { aiTimeout: parsedValue as number }
+    case CONFIG_KEYS.THUMBNAIL_SIZE:
+      return { thumbnailSize: parsedValue as number }
+    case CONFIG_KEYS.THEME:
+      return { theme: parsedValue as string }
+    case CONFIG_KEYS.LANGUAGE:
+      return { language: parsedValue as string }
+    case CONFIG_KEYS.NOTIFICATION_ENABLED:
+      return { notificationEnabled: parsedValue as boolean }
+    case CONFIG_KEYS.NOTIFICATION_AI_COMPLETE:
+      return { notificationAiComplete: parsedValue as boolean }
+    case CONFIG_KEYS.NOTIFICATION_DEDUP_COMPLETE:
+      return { notificationDedupComplete: parsedValue as boolean }
+    case CONFIG_KEYS.PRIVACY_SEND_ANALYTICS:
+      return { privacySendAnalytics: parsedValue as boolean }
+    case CONFIG_KEYS.PRIVACY_SHARE_DATA:
+      return { privacyShareData: parsedValue as boolean }
+    default:
+      return {}
+  }
+}
+
 export const useConfigStore = create<ConfigState>((set, get) => ({
   lmStudioUrl: 'http://localhost:1234',
   aiConcurrency: 3,
@@ -98,41 +131,9 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       const state: Partial<ConfigState> = {}
 
       for (const { key, value } of configs) {
-        switch (key as ConfigKey) {
-          case CONFIG_KEYS.LM_STUDIO_URL:
-            state.lmStudioUrl = value
-            break
-          case CONFIG_KEYS.AI_CONCURRENCY:
-            state.aiConcurrency = Number(value)
-            break
-          case CONFIG_KEYS.AI_TIMEOUT:
-            state.aiTimeout = Number(value)
-            break
-          case CONFIG_KEYS.THUMBNAIL_SIZE:
-            state.thumbnailSize = Number(value)
-            break
-          case CONFIG_KEYS.THEME:
-            state.theme = value
-            break
-          case CONFIG_KEYS.LANGUAGE:
-            state.language = value
-            break
-          case CONFIG_KEYS.NOTIFICATION_ENABLED:
-            state.notificationEnabled = value === 'true' || value === '1'
-            break
-          case CONFIG_KEYS.NOTIFICATION_AI_COMPLETE:
-            state.notificationAiComplete = value === 'true' || value === '1'
-            break
-          case CONFIG_KEYS.NOTIFICATION_DEDUP_COMPLETE:
-            state.notificationDedupComplete = value === 'true' || value === '1'
-            break
-          case CONFIG_KEYS.PRIVACY_SEND_ANALYTICS:
-            state.privacySendAnalytics = value === 'true' || value === '1'
-            break
-          case CONFIG_KEYS.PRIVACY_SHARE_DATA:
-            state.privacyShareData = value === 'true' || value === '1'
-            break
-        }
+        const configKey = key as ConfigKey
+        const parsed = parseConfigValue(configKey, value)
+        Object.assign(state, applyConfigToState(configKey, parsed))
       }
 
       const newState = { ...state, isLoaded: true, loadError: null, pendingChanges: {} }
@@ -167,42 +168,9 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     // Apply saved values to persisted state and clear pending
     const state: Partial<ConfigState> = { pendingChanges: {} }
     for (const [key, value] of entries) {
-      const parsed = parseConfigValue(key, value)
-      switch (key) {
-        case CONFIG_KEYS.LM_STUDIO_URL:
-          state.lmStudioUrl = parsed as string
-          break
-        case CONFIG_KEYS.AI_CONCURRENCY:
-          state.aiConcurrency = parsed as number
-          break
-        case CONFIG_KEYS.AI_TIMEOUT:
-          state.aiTimeout = parsed as number
-          break
-        case CONFIG_KEYS.THUMBNAIL_SIZE:
-          state.thumbnailSize = parsed as number
-          break
-        case CONFIG_KEYS.THEME:
-          state.theme = parsed as string
-          break
-        case CONFIG_KEYS.LANGUAGE:
-          state.language = parsed as string
-          break
-        case CONFIG_KEYS.NOTIFICATION_ENABLED:
-          state.notificationEnabled = parsed as boolean
-          break
-        case CONFIG_KEYS.NOTIFICATION_AI_COMPLETE:
-          state.notificationAiComplete = parsed as boolean
-          break
-        case CONFIG_KEYS.NOTIFICATION_DEDUP_COMPLETE:
-          state.notificationDedupComplete = parsed as boolean
-          break
-        case CONFIG_KEYS.PRIVACY_SEND_ANALYTICS:
-          state.privacySendAnalytics = parsed as boolean
-          break
-        case CONFIG_KEYS.PRIVACY_SHARE_DATA:
-          state.privacyShareData = parsed as boolean
-          break
-      }
+      const configKey = key as ConfigKey
+      const parsed = parseConfigValue(configKey, value)
+      Object.assign(state, applyConfigToState(configKey, parsed))
     }
 
     set(state)

@@ -32,10 +32,14 @@ export function Sidebar({ currentPage }: SidebarProps) {
   ]
   
   const handleNavigate = (page: Page) => {
-    console.log('[Sidebar] navigate to:', page)
+    if (import.meta.env.DEV) {
+      console.debug('[Sidebar] navigate to:', page)
+    }
     try {
       navigate({ route: page, source: 'sidebar' })
-      console.log('[Sidebar] navigate() resolved')
+      if (import.meta.env.DEV) {
+        console.debug('[Sidebar] navigate() resolved')
+      }
     } catch (err) {
       console.error('[Sidebar] navigate() threw:', err)
     }

@@ -34,7 +34,7 @@ export function SampleDataBanner({ onCleared }: SampleDataBannerProps) {
     } finally {
       setClearing(false)
     }
-  }, [onCleared, t])
+  }, [onCleared])
 
   if (!visible) return null
 
