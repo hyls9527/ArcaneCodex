@@ -767,121 +767,139 @@ pub async fn import_images(
         let conn = db.open_connection().map_err(AppError::database)?;
         let tx = conn.unchecked_transaction().map_err(AppError::database)?;
 
-    for (index, path_str) in expanded_paths.iter().enumerate() {
-        let file_path = Path::new(path_str);
+        for (index, path_str) in expanded_paths.iter().enumerate() {
+            let file_path = Path::new(path_str);
 
-        // ========== 导入路径安全预检 ==========
-        // import_images 允许从任意位置导入（设计意图），但必须拒绝恶意路径
-        if let Err(e) = validate_import_path(file_path) {
-            warn!("导入路径安全检查失败: {} - {}", path_str, e);
-            result.error_count += 1;
-            result.errors.push(ImportError {
-                file_path: path_str.clone(),
-                reason: e,
-            });
-            continue;
-        }
-
-        let canonical_path = match file_path.canonicalize() {
-            Ok(p) => p,
-            Err(e) => {
-                warn!("路径规范化失败: {} - {}", path_str, e);
+            // ========== 导入路径安全预检 ==========
+            // import_images 允许从任意位置导入（设计意图），但必须拒绝恶意路径
+            if let Err(e) = validate_import_path(file_path) {
+                warn!("导入路径安全检查失败: {} - {}", path_str, e);
                 result.error_count += 1;
                 result.errors.push(ImportError {
                     file_path: path_str.clone(),
-                    reason: format!("路径规范化失败: {}", e),
+                    reason: e,
                 });
                 continue;
             }
-        };
-        let canonical_str = canonical_path.to_string_lossy().to_string();
-        let file_name = canonical_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown")
-            .to_string();
 
-        // Emit processing progress
-        let _ = app.emit(
-            "import-progress",
-            ImportProgress {
-                current_file: file_name.clone(),
-                current: index + 1,
-                total,
-                status: ImportStatus::Processing,
-            },
-        );
+            let canonical_path = match file_path.canonicalize() {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("路径规范化失败: {} - {}", path_str, e);
+                    result.error_count += 1;
+                    result.errors.push(ImportError {
+                        file_path: path_str.clone(),
+                        reason: format!("路径规范化失败: {}", e),
+                    });
+                    continue;
+                }
+            };
+            let canonical_str = canonical_path.to_string_lossy().to_string();
+            let file_name = canonical_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
 
-        match validate_file(&canonical_path) {
-            Ok((mime_type, file_size)) => match calculate_sha256(&canonical_path) {
-                Ok(hash) => match is_duplicate(&tx, &hash) {
-                    Ok(true) => {
-                        info!("跳过重复文件: {}", canonical_str);
-                        result.duplicate_count += 1;
-                        let _ = app.emit(
-                            "import-progress",
-                            ImportProgress {
-                                current_file: file_name.clone(),
-                                current: index + 1,
-                                total,
-                                status: ImportStatus::Duplicate,
-                            },
-                        );
-                    }
-                    Ok(false) => {
-                        match insert_image_record(
-                            &tx,
-                            &canonical_str,
-                            &file_name,
-                            file_size,
-                            &hash,
-                            &mime_type,
-                        ) {
-                            Ok(id) => {
-                                info!("[阶段1] 成功插入图片记录: {} (ID: {})", file_name, id);
-                                pending_imports.push(PendingImport {
-                                    id,
-                                    file_path: canonical_str.clone(),
-                                    file_name: file_name.clone(),
-                                });
-                                result.success_count += 1;
-                                result.image_ids.push(id);
+            // Emit processing progress
+            let _ = app.emit(
+                "import-progress",
+                ImportProgress {
+                    current_file: file_name.clone(),
+                    current: index + 1,
+                    total,
+                    status: ImportStatus::Processing,
+                },
+            );
 
-                                let _ = app.emit(
-                                    "import-progress",
-                                    ImportProgress {
-                                        current_file: file_name.clone(),
-                                        current: index + 1,
-                                        total,
-                                        status: ImportStatus::Success,
-                                    },
-                                );
-                            }
-                            Err(e) => {
-                                error!("数据库插入失败: {} - {}", file_name, e);
-                                result.error_count += 1;
-                                result.errors.push(ImportError {
-                                    file_path: canonical_str.clone(),
-                                    reason: e.to_string(),
-                                });
-                                let _ = app.emit(
-                                    "import-progress",
-                                    ImportProgress {
-                                        current_file: file_name.clone(),
-                                        current: index + 1,
-                                        total,
-                                        status: ImportStatus::Error,
-                                    },
-                                );
+            match validate_file(&canonical_path) {
+                Ok((mime_type, file_size)) => match calculate_sha256(&canonical_path) {
+                    Ok(hash) => match is_duplicate(&tx, &hash) {
+                        Ok(true) => {
+                            info!("跳过重复文件: {}", canonical_str);
+                            result.duplicate_count += 1;
+                            let _ = app.emit(
+                                "import-progress",
+                                ImportProgress {
+                                    current_file: file_name.clone(),
+                                    current: index + 1,
+                                    total,
+                                    status: ImportStatus::Duplicate,
+                                },
+                            );
+                        }
+                        Ok(false) => {
+                            match insert_image_record(
+                                &tx,
+                                &canonical_str,
+                                &file_name,
+                                file_size,
+                                &hash,
+                                &mime_type,
+                            ) {
+                                Ok(id) => {
+                                    info!("[阶段1] 成功插入图片记录: {} (ID: {})", file_name, id);
+                                    pending_imports.push(PendingImport {
+                                        id,
+                                        file_path: canonical_str.clone(),
+                                        file_name: file_name.clone(),
+                                    });
+                                    result.success_count += 1;
+                                    result.image_ids.push(id);
+
+                                    let _ = app.emit(
+                                        "import-progress",
+                                        ImportProgress {
+                                            current_file: file_name.clone(),
+                                            current: index + 1,
+                                            total,
+                                            status: ImportStatus::Success,
+                                        },
+                                    );
+                                }
+                                Err(e) => {
+                                    error!("数据库插入失败: {} - {}", file_name, e);
+                                    result.error_count += 1;
+                                    result.errors.push(ImportError {
+                                        file_path: canonical_str.clone(),
+                                        reason: e.to_string(),
+                                    });
+                                    let _ = app.emit(
+                                        "import-progress",
+                                        ImportProgress {
+                                            current_file: file_name.clone(),
+                                            current: index + 1,
+                                            total,
+                                            status: ImportStatus::Error,
+                                        },
+                                    );
+                                }
                             }
                         }
-                    }
+                        Err(e) => {
+                            error!("重复检测失败: {} - {}", file_name, e);
+                            result.error_count += 1;
+                            result.errors.push(ImportError {
+                                file_path: canonical_str.clone(),
+                                reason: e.to_string(),
+                            });
+                            let _ = app.emit(
+                                "import-progress",
+                                ImportProgress {
+                                    current_file: file_name.clone(),
+                                    current: index + 1,
+                                    total,
+                                    status: ImportStatus::Error,
+                                },
+                            );
+                        }
+                    },
                     Err(e) => {
-                        error!("重复检测失败: {} - {}", file_name, e);
+                        error!("哈希计算失败: {} - {}", file_name, e);
                         result.error_count += 1;
                         result.errors.push(ImportError {
                             file_path: canonical_str.clone(),
-                            reason: e.to_string(),
+                            reason: format!("哈希计算失败: {}", e),
                         });
                         let _ = app.emit(
                             "import-progress",
@@ -895,11 +913,11 @@ pub async fn import_images(
                     }
                 },
                 Err(e) => {
-                    error!("哈希计算失败: {} - {}", file_name, e);
+                    warn!("文件验证失败: {} - {}", canonical_str, e);
                     result.error_count += 1;
                     result.errors.push(ImportError {
                         file_path: canonical_str.clone(),
-                        reason: format!("哈希计算失败: {}", e),
+                        reason: e.to_string(),
                     });
                     let _ = app.emit(
                         "import-progress",
@@ -911,29 +929,11 @@ pub async fn import_images(
                         },
                     );
                 }
-            },
-            Err(e) => {
-                warn!("文件验证失败: {} - {}", canonical_str, e);
-                result.error_count += 1;
-                result.errors.push(ImportError {
-                    file_path: canonical_str.clone(),
-                    reason: e.to_string(),
-                });
-                let _ = app.emit(
-                    "import-progress",
-                    ImportProgress {
-                        current_file: file_name.clone(),
-                        current: index + 1,
-                        total,
-                        status: ImportStatus::Error,
-                    },
-                );
             }
         }
-    }
 
-    // 阶段1完成：提交事务，释放数据库连接
-    tx.commit().map_err(AppError::database)?;
+        // 阶段1完成：提交事务，释放数据库连接
+        tx.commit().map_err(AppError::database)?;
     } // 事务作用域结束，conn 和 tx 被 drop
     info!(
         "[阶段1] 快速入库完成: 成功 {}, 待处理元数据: {}",
@@ -1691,7 +1691,8 @@ mod tests {
     fn create_temp_file(dir: &TempDir, name: &str, content: &[u8]) -> std::path::PathBuf {
         let path = dir.path().join(name);
         let mut file = File::create(&path).expect("temp file creation should succeed");
-        file.write_all(content).expect("writing temp file content should succeed");
+        file.write_all(content)
+            .expect("writing temp file content should succeed");
         path
     }
 
@@ -1752,7 +1753,8 @@ mod tests {
             let path = create_temp_file(&temp_dir, &filename, dummy_content);
             let result = validate_file(&path);
             assert!(result.is_ok(), "扩展名 .{} 应该被支持: {:?}", ext, result);
-            let (mime_type, size) = result.expect("supported extension should validate successfully");
+            let (mime_type, size) =
+                result.expect("supported extension should validate successfully");
             assert_eq!(size, dummy_content.len() as u64);
             assert!(
                 mime_type.starts_with("image/"),
@@ -1902,7 +1904,8 @@ mod tests {
             }],
         };
 
-        let json = serde_json::to_string(&result).expect("ImportResult serialization should succeed");
+        let json =
+            serde_json::to_string(&result).expect("ImportResult serialization should succeed");
         let deserialized: ImportResult =
             serde_json::from_str(&json).expect("ImportResult deserialization should succeed");
 
@@ -2051,7 +2054,12 @@ mod tests {
         // 写入缩略图路径到数据库
         conn.execute(
             "UPDATE images SET thumbnail_path = ?2 WHERE id = ?1",
-            rusqlite::params![id, thumb_path.to_str().expect("thumb path should be valid UTF-8")],
+            rusqlite::params![
+                id,
+                thumb_path
+                    .to_str()
+                    .expect("thumb path should be valid UTF-8")
+            ],
         )
         .expect("thumbnail path update should succeed");
 
@@ -2097,8 +2105,7 @@ mod tests {
         if let Some(thumb_str) = thumb {
             let thumb_path_obj = Path::new(&thumb_str);
             if thumb_path_obj.exists() {
-                fs::remove_file(thumb_path_obj)
-                    .expect("thumbnail file deletion should succeed");
+                fs::remove_file(thumb_path_obj).expect("thumbnail file deletion should succeed");
             }
         }
 
@@ -2173,8 +2180,7 @@ mod tests {
         if let Some(thumb_str) = thumb {
             let thumb_path_obj = Path::new(&thumb_str);
             if thumb_path_obj.exists() {
-                fs::remove_file(thumb_path_obj)
-                    .expect("thumbnail file deletion should succeed");
+                fs::remove_file(thumb_path_obj).expect("thumbnail file deletion should succeed");
             }
             // 不存在时跳过，不应 panic
         }
@@ -2314,7 +2320,9 @@ mod tests {
         let thumb_path = temp_dir.path().join(format!("thumb_{}.webp", id));
         let thumb_result = ImageProcessor::generate_thumbnail(
             path_str,
-            thumb_path.to_str().expect("thumb path should be valid UTF-8"),
+            thumb_path
+                .to_str()
+                .expect("thumb path should be valid UTF-8"),
         );
         assert!(thumb_result.is_ok(), "缩略图应成功生成: {:?}", thumb_result);
         assert!(thumb_path.exists(), "缩略图文件应存在");
@@ -2325,17 +2333,17 @@ mod tests {
         assert!(!phash.is_empty(), "pHash 不应为空");
 
         // EXIF
-        let exif =
-            ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
+        let exif = ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
         assert!(exif.get("width").is_some(), "EXIF 应包含宽度");
 
         // 写回元数据
-        let exif_json =
-            serde_json::to_string(&exif).expect("EXIF serialization should succeed");
+        let exif_json = serde_json::to_string(&exif).expect("EXIF serialization should succeed");
         update_image_metadata(
             &conn,
             id,
-            thumb_path.to_str().expect("thumb path should be valid UTF-8"),
+            thumb_path
+                .to_str()
+                .expect("thumb path should be valid UTF-8"),
             &phash,
             800,
             600,
@@ -2407,10 +2415,8 @@ mod tests {
         // 但元数据更新应成功
         let phash =
             ImageProcessor::calculate_phash(path_str).expect("pHash calculation should succeed");
-        let exif =
-            ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
-        let exif_json =
-            serde_json::to_string(&exif).expect("EXIF serialization should succeed");
+        let exif = ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
+        let exif_json = serde_json::to_string(&exif).expect("EXIF serialization should succeed");
 
         let meta_result = update_image_metadata(&conn, id, "", &phash, 640, 480, &exif_json);
         assert!(meta_result.is_ok(), "元数据更新不应被缩略图失败阻塞");
@@ -2449,18 +2455,20 @@ mod tests {
         let thumb_path = temp_dir.path().join(format!("thumb_{}.webp", id));
         ImageProcessor::generate_thumbnail(
             path_str,
-            thumb_path.to_str().expect("thumb path should be valid UTF-8"),
+            thumb_path
+                .to_str()
+                .expect("thumb path should be valid UTF-8"),
         )
         .expect("thumbnail generation should succeed");
 
-        let exif =
-            ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
-        let exif_json =
-            serde_json::to_string(&exif).expect("EXIF serialization should succeed");
+        let exif = ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
+        let exif_json = serde_json::to_string(&exif).expect("EXIF serialization should succeed");
         update_image_metadata(
             &conn,
             id,
-            thumb_path.to_str().expect("thumb path should be valid UTF-8"),
+            thumb_path
+                .to_str()
+                .expect("thumb path should be valid UTF-8"),
             "",
             320,
             240,
@@ -2907,9 +2915,8 @@ mod tests {
         let (mime_type, file_size) =
             validate_file(&img_path).expect("test image file should be valid");
         let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
-        let _id =
-            insert_image_record(&conn, path_str, "dup.jpg", file_size, &hash, &mime_type)
-                .expect("image record insertion should succeed");
+        let _id = insert_image_record(&conn, path_str, "dup.jpg", file_size, &hash, &mime_type)
+            .expect("image record insertion should succeed");
 
         let dest_dir = temp_dir.path().join("export_dup_test");
         fs::create_dir_all(&dest_dir).expect("export directory creation should succeed");

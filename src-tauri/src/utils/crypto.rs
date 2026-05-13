@@ -258,14 +258,8 @@ mod tests {
             nonces.insert(nonce.to_vec());
         }
 
-        assert!(
-            salts.len() >= 9,
-            "10 次加密应产生至少 9 个不同的 Salt"
-        );
-        assert!(
-            nonces.len() >= 9,
-            "10 次加密应产生至少 9 个不同的 Nonce"
-        );
+        assert!(salts.len() >= 9, "10 次加密应产生至少 9 个不同的 Salt");
+        assert!(nonces.len() >= 9, "10 次加密应产生至少 9 个不同的 Nonce");
     }
 
     #[test]
@@ -290,6 +284,9 @@ mod tests {
 
     #[test]
     fn test_pbkdf2_iterations_value() {
-        assert_eq!(PBKDF2_ITERATIONS, 600_000, "PBKDF2 迭代次数应符合 OWASP 2023 推荐");
+        assert_eq!(
+            PBKDF2_ITERATIONS, 600_000,
+            "PBKDF2 迭代次数应符合 OWASP 2023 推荐"
+        );
     }
 }
