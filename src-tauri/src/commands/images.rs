@@ -369,6 +369,13 @@ fn get_available_disk_space(path: &Path) -> AppResult<u64> {
         use std::os::windows::ffi::OsStrExt;
         use winapi::um::fileapi::GetDiskFreeSpaceExW;
 
+        // SAFETY: GetDiskFreeSpaceExW is a Win32 API that reads filesystem statistics.
+        // The wpath pointer is a valid null-terminated wide C string constructed from
+        // Rust's OsStr::encode_wide() with an explicit trailing null terminator.
+        // The three output pointers (&mut free_bytes, &mut _total_bytes, &mut _total_free_bytes)
+        // are valid aligned pointers to stack-allocated u64 variables. No mutable global
+        // state is accessed beyond the filesystem metadata read. The function does not
+        // write beyond the bounds of the provided pointers.
         unsafe {
             let wpath: Vec<u16> = OsStr::new(path.parent().unwrap_or(path))
                 .encode_wide()
@@ -402,8 +409,19 @@ fn get_available_disk_space(path: &Path) -> AppResult<u64> {
         let cpath = std::ffi::CString::new(path.to_str().unwrap_or("/"))
             .map_err(|_| AppError::validation("Invalid path"))?;
 
+        // SAFETY: mem::zeroed() initializes a libc::statvfs struct with all-zero bytes.
+        // This is safe because statvfs is a POD (Plain Old Data) C struct with no
+        // invalid bit patterns for the zero value — all fields are integer types
+        // (unsigned long) that accept zero as a valid value. The zeroed struct is
+        // immediately passed to statvfs() which will fully populate it.
         let mut statvfs_buf: libc::statvfs = unsafe { mem::zeroed() };
 
+        // SAFETY: statvfs() is a POSIX function that reads filesystem statistics.
+        // The cpath pointer is a valid null-terminated C string constructed from
+        // Rust's CString::new(), which guarantees no interior null bytes and a
+        // trailing null terminator. The statvfs_buf pointer is a valid mutable
+        // reference to a properly initialized statvfs struct. No mutable global
+        // state is accessed beyond the filesystem metadata read.
         let result = unsafe { libc::statvfs(cpath.as_ptr(), &mut statvfs_buf) };
 
         if result == 0 {
@@ -740,11 +758,14 @@ pub async fn import_images(
     };
 
     // ========== 阶段1: 快速入库 ==========
-    // 目标：快速验证+插入记录，最小化数据库连接持有时间
+    // 目标：快速验证+插入记录，使用事务保证批量写入的原子性
+    // 注意：事务必须在独立作用域内完成，避免 Transaction 跨越 .await 导致 Send 问题
     info!("[阶段1] 开始快速入库...");
 
-    let conn = db.open_connection().map_err(AppError::database)?;
     let mut pending_imports: Vec<PendingImport> = Vec::new();
+    {
+        let conn = db.open_connection().map_err(AppError::database)?;
+        let tx = conn.unchecked_transaction().map_err(AppError::database)?;
 
     for (index, path_str) in expanded_paths.iter().enumerate() {
         let file_path = Path::new(path_str);
@@ -793,7 +814,7 @@ pub async fn import_images(
 
         match validate_file(&canonical_path) {
             Ok((mime_type, file_size)) => match calculate_sha256(&canonical_path) {
-                Ok(hash) => match is_duplicate(&conn, &hash) {
+                Ok(hash) => match is_duplicate(&tx, &hash) {
                     Ok(true) => {
                         info!("跳过重复文件: {}", canonical_str);
                         result.duplicate_count += 1;
@@ -809,7 +830,7 @@ pub async fn import_images(
                     }
                     Ok(false) => {
                         match insert_image_record(
-                            &conn,
+                            &tx,
                             &canonical_str,
                             &file_name,
                             file_size,
@@ -911,8 +932,9 @@ pub async fn import_images(
         }
     }
 
-    // 阶段1完成：立即释放数据库连接
-    drop(conn);
+    // 阶段1完成：提交事务，释放数据库连接
+    tx.commit().map_err(AppError::database)?;
+    } // 事务作用域结束，conn 和 tx 被 drop
     info!(
         "[阶段1] 快速入库完成: 成功 {}, 待处理元数据: {}",
         result.success_count,
@@ -1221,12 +1243,13 @@ pub async fn get_image_detail(db: State<'_, Database>, id: i64) -> AppResult<ser
 #[tauri::command]
 pub async fn delete_images(db: State<'_, Database>, ids: Vec<i64>) -> AppResult<usize> {
     let conn = db.open_connection().map_err(AppError::database)?;
+    let tx = conn.unchecked_transaction().map_err(AppError::database)?;
 
     let mut deleted = 0;
 
     for &id in &ids {
         // 1. 查询 thumbnail_path 和 file_path
-        let thumb_path: Option<String> = conn
+        let thumb_path: Option<String> = tx
             .query_row(
                 "SELECT thumbnail_path FROM images WHERE id = ?",
                 rusqlite::params![id],
@@ -1234,7 +1257,7 @@ pub async fn delete_images(db: State<'_, Database>, ids: Vec<i64>) -> AppResult<
             )
             .ok();
 
-        let file_path: Option<String> = conn
+        let file_path: Option<String> = tx
             .query_row(
                 "SELECT file_path FROM images WHERE id = ?",
                 rusqlite::params![id],
@@ -1243,14 +1266,14 @@ pub async fn delete_images(db: State<'_, Database>, ids: Vec<i64>) -> AppResult<
             .ok();
 
         // 2. 删除 search_index 记录
-        conn.execute(
+        tx.execute(
             "DELETE FROM search_index WHERE image_id = ?",
             rusqlite::params![id],
         )
         .map_err(AppError::database)?;
 
-        // 3. 删除 images 记录
-        let row_deleted = conn
+        // 3. 删除 images 记录（image_tags 由外键 CASCADE 自动删除）
+        let row_deleted = tx
             .execute("DELETE FROM images WHERE id = ?", rusqlite::params![id])
             .map_err(AppError::database)?;
 
@@ -1287,6 +1310,8 @@ pub async fn delete_images(db: State<'_, Database>, ids: Vec<i64>) -> AppResult<
             }
         }
     }
+
+    tx.commit().map_err(AppError::database)?;
 
     info!("删除了 {} 张图片", deleted);
 
@@ -1665,18 +1690,21 @@ mod tests {
 
     fn create_temp_file(dir: &TempDir, name: &str, content: &[u8]) -> std::path::PathBuf {
         let path = dir.path().join(name);
-        let mut file = File::create(&path).unwrap();
-        file.write_all(content).unwrap();
+        let mut file = File::create(&path).expect("temp file creation should succeed");
+        file.write_all(content).expect("writing temp file content should succeed");
         path
     }
 
     fn setup_test_db() -> (Database, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_images.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
         conn.execute_batch(
             "INSERT INTO images (file_path, file_name, file_size, file_hash, mime_type, ai_status, source) 
              VALUES ('/test/1.jpg', '1.jpg', 1000, 'hash1', 'image/jpeg', 'pending', 'import');
@@ -1685,7 +1713,7 @@ mod tests {
              INSERT INTO images (file_path, file_name, file_size, file_hash, mime_type, ai_status, source) 
              VALUES ('/test/3.jpg', '3.jpg', 3000, 'hash3', 'image/jpeg', 'completed', 'import');",
         )
-        .unwrap();
+        .expect("test data insertion should succeed");
 
         (db, temp_dir)
     }
@@ -1695,24 +1723,24 @@ mod tests {
         let path = Path::new("/nonexistent/test/image.jpg");
         let result = validate_file(path);
         assert!(result.is_err(), "不存在的文件应返回错误");
-        let err = result.unwrap_err();
+        let err = result.expect_err("nonexistent file should produce an error");
         assert!(err.to_string().contains("文件不存在"));
     }
 
     #[test]
     fn test_validate_file_empty() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let path = create_temp_file(&temp_dir, "empty.jpg", &[]);
 
         let result = validate_file(&path);
         assert!(result.is_err(), "空文件应返回错误");
-        let err = result.unwrap_err();
+        let err = result.expect_err("empty file should produce an error");
         assert!(err.to_string().contains("文件为空"));
     }
 
     #[test]
     fn test_validate_file_supported_extensions() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let dummy_content = b"fake image content for testing";
 
         let extensions = [
@@ -1724,7 +1752,7 @@ mod tests {
             let path = create_temp_file(&temp_dir, &filename, dummy_content);
             let result = validate_file(&path);
             assert!(result.is_ok(), "扩展名 .{} 应该被支持: {:?}", ext, result);
-            let (mime_type, size) = result.unwrap();
+            let (mime_type, size) = result.expect("supported extension should validate successfully");
             assert_eq!(size, dummy_content.len() as u64);
             assert!(
                 mime_type.starts_with("image/"),
@@ -1736,18 +1764,18 @@ mod tests {
 
     #[test]
     fn test_validate_file_unsupported_extension() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let path = create_temp_file(&temp_dir, "test.xyz", b"some content");
 
         let result = validate_file(&path);
         assert!(result.is_err(), "不支持的扩展名应返回错误");
-        let err = result.unwrap_err();
+        let err = result.expect_err("unsupported extension should produce an error");
         assert!(err.to_string().contains("不支持的文件格式"));
     }
 
     #[test]
     fn test_validate_file_mime_mapping() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let content = b"fake image content";
 
         let mime_mapping = [
@@ -1768,7 +1796,7 @@ mod tests {
             let path = create_temp_file(&temp_dir, &filename, content);
             let result = validate_file(&path);
             assert!(result.is_ok(), "文件 {} 应该验证成功", filename);
-            let (mime_type, _) = result.unwrap();
+            let (mime_type, _) = result.expect("valid extension should validate successfully");
             assert_eq!(
                 mime_type, expected_mime,
                 "扩展名 {} 的 MIME 类型映射错误",
@@ -1779,7 +1807,7 @@ mod tests {
 
     #[test]
     fn test_validate_file_special_chars_chinese() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         // Create file with Chinese characters in name
         let path = create_temp_file(&temp_dir, "测试图片_123.jpg", b"fake image content");
 
@@ -1789,19 +1817,19 @@ mod tests {
             "包含中文字符的路径应该能正常验证: {:?}",
             result
         );
-        let (_, size) = result.unwrap();
+        let (_, size) = result.expect("Chinese filename should validate successfully");
         assert!(size > 0);
     }
 
     #[test]
     fn test_validate_file_special_chars_spaces() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         // Create file with spaces in name
         let path = create_temp_file(&temp_dir, "my photo 2024.jpg", b"fake image content");
 
         let result = validate_file(&path);
         assert!(result.is_ok(), "包含空格的路径应该能正常验证: {:?}", result);
-        let (_, size) = result.unwrap();
+        let (_, size) = result.expect("filename with spaces should validate successfully");
         assert!(size > 0);
     }
 
@@ -1814,7 +1842,7 @@ mod tests {
 
     #[test]
     fn test_disk_space_check_for_temp_file() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let path = create_temp_file(&temp_dir, "test.jpg", b"fake image content");
 
         let result = get_available_disk_space(&path);
@@ -1830,7 +1858,7 @@ mod tests {
         let path = Path::new(".");
         let result = get_available_disk_space(path);
         assert!(result.is_ok());
-        let space = result.unwrap();
+        let space = result.expect("disk space query should succeed");
         assert!(space > 0);
     }
 
@@ -1874,8 +1902,9 @@ mod tests {
             }],
         };
 
-        let json = serde_json::to_string(&result).unwrap();
-        let deserialized: ImportResult = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&result).expect("ImportResult serialization should succeed");
+        let deserialized: ImportResult =
+            serde_json::from_str(&json).expect("ImportResult deserialization should succeed");
 
         assert_eq!(deserialized.success_count, 5);
         assert_eq!(deserialized.duplicate_count, 2);
@@ -1887,24 +1916,26 @@ mod tests {
     #[test]
     fn test_get_images_pagination() {
         let (db, _temp) = setup_test_db();
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         let mut stmt = conn
             .prepare(
                 "SELECT id, file_path, file_name, file_size, file_hash, mime_type, ai_status, source 
                  FROM images ORDER BY created_at DESC LIMIT ?1 OFFSET ?2",
             )
-            .unwrap();
+            .expect("query preparation should succeed");
 
         let rows = stmt
             .query_map(rusqlite::params![2, 0], |row| {
                 Ok((
-                    row.get::<_, i64>(0).unwrap(),
-                    row.get::<_, String>(1).unwrap(),
-                    row.get::<_, String>(2).unwrap(),
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
                 ))
             })
-            .unwrap();
+            .expect("query execution should succeed");
 
         let results: Vec<_> = rows.filter_map(|r| r.ok()).collect();
         assert_eq!(results.len(), 2, "分页应返回 2 条记录");
@@ -1913,17 +1944,17 @@ mod tests {
     #[test]
     fn test_get_images_empty_result() {
         let (db, _temp) = setup_test_db();
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         let mut stmt = conn
             .prepare("SELECT id FROM images ORDER BY created_at DESC LIMIT ?1 OFFSET ?2")
-            .unwrap();
+            .expect("query preparation should succeed");
 
         let rows = stmt
-            .query_map(rusqlite::params![10, 100], |row| {
-                Ok(row.get::<_, i64>(0).unwrap())
-            })
-            .unwrap();
+            .query_map(rusqlite::params![10, 100], |row| Ok(row.get::<_, i64>(0)?))
+            .expect("query execution should succeed");
 
         let results: Vec<_> = rows.filter_map(|r| r.ok()).collect();
         assert_eq!(results.len(), 0, "超出范围应返回空结果");
@@ -1932,15 +1963,19 @@ mod tests {
     #[test]
     fn test_delete_images_single() {
         let (db, _temp) = setup_test_db();
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
-        let deleted = conn.execute("DELETE FROM images WHERE id = 1", []).unwrap();
+        let deleted = conn
+            .execute("DELETE FROM images WHERE id = 1", [])
+            .expect("delete operation should succeed");
 
         assert_eq!(deleted, 1, "应删除 1 条记录");
 
         let count: i32 = conn
             .query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0))
-            .unwrap();
+            .expect("count query should succeed");
 
         assert_eq!(count, 2, "删除后应剩余 2 条记录");
     }
@@ -1948,17 +1983,19 @@ mod tests {
     #[test]
     fn test_delete_images_multiple() {
         let (db, _temp) = setup_test_db();
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         let deleted = conn
             .execute("DELETE FROM images WHERE id IN (1, 3)", [])
-            .unwrap();
+            .expect("delete operation should succeed");
 
         assert_eq!(deleted, 2, "应删除 2 条记录");
 
         let count: i32 = conn
             .query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0))
-            .unwrap();
+            .expect("count query should succeed");
 
         assert_eq!(count, 1, "删除后应剩余 1 条记录");
     }
@@ -1966,11 +2003,13 @@ mod tests {
     #[test]
     fn test_delete_images_nonexistent() {
         let (db, _temp) = setup_test_db();
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         let deleted = conn
             .execute("DELETE FROM images WHERE id = 999", [])
-            .unwrap();
+            .expect("delete operation should succeed");
 
         assert_eq!(deleted, 0, "删除不存在的记录应返回 0");
     }
@@ -1979,17 +2018,21 @@ mod tests {
     fn test_delete_images_cleans_up_thumbnail_and_search_index() {
         use tempfile::TempDir;
 
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_delete_cleanup.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
-        let conn = db.open_connection().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // 创建测试图片记录，带缩略图路径
         let img_path = create_test_image_file(&temp_dir, "delete_test.jpg", 100, 100);
-        let path_str = img_path.to_str().unwrap();
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
         let id = insert_image_record(
             &conn,
             path_str,
@@ -1998,25 +2041,25 @@ mod tests {
             &hash,
             &mime_type,
         )
-        .unwrap();
+        .expect("image record insertion should succeed");
 
         // 创建缩略图文件
         let thumb_path = temp_dir.path().join("thumb.webp");
-        File::create(&thumb_path).unwrap();
+        File::create(&thumb_path).expect("thumbnail file creation should succeed");
         assert!(thumb_path.exists(), "缩略图文件应存在");
 
         // 写入缩略图路径到数据库
         conn.execute(
             "UPDATE images SET thumbnail_path = ?2 WHERE id = ?1",
-            rusqlite::params![id, thumb_path.to_str().unwrap()],
+            rusqlite::params![id, thumb_path.to_str().expect("thumb path should be valid UTF-8")],
         )
-        .unwrap();
+        .expect("thumbnail path update should succeed");
 
         // 创建 search_index 记录
         conn.execute(
             "INSERT INTO search_index (image_id, term, field, position, weight) VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![id, "test", "description", 0, 1.0],
-        ).unwrap();
+        ).expect("search index insertion should succeed");
 
         // 验证前置条件
         let index_count: i32 = conn
@@ -2025,7 +2068,7 @@ mod tests {
                 [id],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("search index count query should succeed");
         assert_eq!(index_count, 1, "search_index 记录应存在");
 
         // 执行删除（模拟命令的完整流程）
@@ -2041,20 +2084,21 @@ mod tests {
         // 删除 search_index
         let index_deleted = conn
             .execute("DELETE FROM search_index WHERE image_id = ?", [id])
-            .unwrap();
+            .expect("search index deletion should succeed");
         assert_eq!(index_deleted, 1, "应删除 search_index 记录");
 
         // 删除 images 记录
         let row_deleted = conn
             .execute("DELETE FROM images WHERE id = ?", [id])
-            .unwrap();
+            .expect("image record deletion should succeed");
         assert_eq!(row_deleted, 1, "应删除 images 记录");
 
         // 删除缩略图文件
         if let Some(thumb_str) = thumb {
             let thumb_path_obj = Path::new(&thumb_str);
             if thumb_path_obj.exists() {
-                fs::remove_file(thumb_path_obj).unwrap();
+                fs::remove_file(thumb_path_obj)
+                    .expect("thumbnail file deletion should succeed");
             }
         }
 
@@ -2065,7 +2109,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM images WHERE id = ?1", [id], |row| {
                 row.get(0)
             })
-            .unwrap();
+            .expect("image count query should succeed");
         assert_eq!(image_count, 0, "图片记录应被删除");
 
         let index_count_after: i32 = conn
@@ -2074,23 +2118,27 @@ mod tests {
                 [id],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("search index count query should succeed");
         assert_eq!(index_count_after, 0, "search_index 记录应被删除");
     }
 
     #[test]
     fn test_delete_images_missing_thumbnail_does_not_block() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_delete_missing_thumb.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
-        let conn = db.open_connection().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // 创建记录，但缩略图文件不存在
         let img_path = create_test_image_file(&temp_dir, "no_thumb.jpg", 50, 50);
-        let path_str = img_path.to_str().unwrap();
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
         let id = insert_image_record(
             &conn,
             path_str,
@@ -2099,7 +2147,7 @@ mod tests {
             &hash,
             &mime_type,
         )
-        .unwrap();
+        .expect("image record insertion should succeed");
 
         // 设置不存在的缩略图路径
         let fake_thumb = temp_dir
@@ -2111,7 +2159,7 @@ mod tests {
             "UPDATE images SET thumbnail_path = ?2 WHERE id = ?1",
             rusqlite::params![id, fake_thumb],
         )
-        .unwrap();
+        .expect("thumbnail path update should succeed");
 
         // 模拟删除流程：尝试删除不存在的缩略图应跳过
         let thumb: Option<String> = conn
@@ -2125,20 +2173,21 @@ mod tests {
         if let Some(thumb_str) = thumb {
             let thumb_path_obj = Path::new(&thumb_str);
             if thumb_path_obj.exists() {
-                fs::remove_file(thumb_path_obj).unwrap();
+                fs::remove_file(thumb_path_obj)
+                    .expect("thumbnail file deletion should succeed");
             }
             // 不存在时跳过，不应 panic
         }
 
         // images 记录仍应正常删除
         conn.execute("DELETE FROM images WHERE id = ?", [id])
-            .unwrap();
+            .expect("image record deletion should succeed");
 
         let count: i32 = conn
             .query_row("SELECT COUNT(*) FROM images WHERE id = ?1", [id], |row| {
                 row.get(0)
             })
-            .unwrap();
+            .expect("image count query should succeed");
         assert_eq!(count, 0, "图片记录应被删除");
     }
 
@@ -2150,14 +2199,16 @@ mod tests {
     ) -> std::path::PathBuf {
         let path = dir.path().join(name);
         let img = image::RgbImage::from_pixel(width, height, image::Rgb([128, 128, 128]));
-        img.save(&path).unwrap();
+        img.save(&path).expect("test image save should succeed");
         path
     }
 
     #[test]
     fn test_update_image_metadata() {
         let (db, _temp) = setup_test_db();
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         let result = update_image_metadata(
             &conn,
@@ -2177,28 +2228,30 @@ mod tests {
                 [],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("thumbnail path query should succeed");
         assert_eq!(thumb, "/test/thumb_1.webp");
 
         let phash: String = conn
             .query_row("SELECT phash FROM images WHERE id = 1", [], |row| {
                 row.get(0)
             })
-            .unwrap();
+            .expect("phash query should succeed");
         assert_eq!(phash, "abc123def456");
 
         let width: i32 = conn
             .query_row("SELECT width FROM images WHERE id = 1", [], |row| {
                 row.get(0)
             })
-            .unwrap();
+            .expect("width query should succeed");
         assert_eq!(width, 1920);
     }
 
     #[test]
     fn test_create_ai_task() {
         let (db, _temp) = setup_test_db();
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         let result = create_ai_task(&conn, 1);
         assert!(result.is_ok(), "AI 任务创建应成功: {:?}", result);
@@ -2209,7 +2262,7 @@ mod tests {
                 [],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("task type query should succeed");
         assert_eq!(task_type, "ai_analysis");
 
         let status: String = conn
@@ -2218,26 +2271,33 @@ mod tests {
                 [],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("task status query should succeed");
         assert_eq!(status, "pending");
     }
 
     #[test]
     fn test_import_pipeline_full_chain() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_import_chain.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         let img_path = create_test_image_file(&temp_dir, "pipeline_test.jpg", 800, 600);
-        let path_str = img_path.to_str().unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
 
         // 完整串联：验证 → 哈希 → 插入 → 缩略图 → pHash → EXIF → 元数据 → AI 任务
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
-        assert!(!is_duplicate(&conn, &hash).unwrap(), "新文件不应是重复的");
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
+        assert!(
+            !is_duplicate(&conn, &hash).expect("duplicate check should succeed"),
+            "新文件不应是重复的"
+        );
 
         let id = insert_image_record(
             &conn,
@@ -2247,39 +2307,44 @@ mod tests {
             &hash,
             &mime_type,
         )
-        .unwrap();
+        .expect("image record insertion should succeed");
         assert!(id > 0, "应返回有效的图片 ID");
 
         // 缩略图
         let thumb_path = temp_dir.path().join(format!("thumb_{}.webp", id));
-        let thumb_result =
-            ImageProcessor::generate_thumbnail(path_str, thumb_path.to_str().unwrap());
+        let thumb_result = ImageProcessor::generate_thumbnail(
+            path_str,
+            thumb_path.to_str().expect("thumb path should be valid UTF-8"),
+        );
         assert!(thumb_result.is_ok(), "缩略图应成功生成: {:?}", thumb_result);
         assert!(thumb_path.exists(), "缩略图文件应存在");
 
         // pHash
-        let phash = ImageProcessor::calculate_phash(path_str).unwrap();
+        let phash =
+            ImageProcessor::calculate_phash(path_str).expect("pHash calculation should succeed");
         assert!(!phash.is_empty(), "pHash 不应为空");
 
         // EXIF
-        let exif = ImageProcessor::extract_exif(path_str).unwrap();
+        let exif =
+            ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
         assert!(exif.get("width").is_some(), "EXIF 应包含宽度");
 
         // 写回元数据
-        let exif_json = serde_json::to_string(&exif).unwrap();
+        let exif_json =
+            serde_json::to_string(&exif).expect("EXIF serialization should succeed");
         update_image_metadata(
             &conn,
             id,
-            thumb_path.to_str().unwrap(),
+            thumb_path.to_str().expect("thumb path should be valid UTF-8"),
             &phash,
             800,
             600,
             &exif_json,
         )
-        .unwrap();
+        .expect("image metadata update should succeed");
 
         // 创建 AI 任务
-        create_ai_task(&conn, id).unwrap();
+        create_ai_task(&conn, id).expect("AI task creation should succeed");
 
         // 最终验证
         let (thumb, p, w, h): (String, String, i32, i32) = conn
@@ -2288,7 +2353,7 @@ mod tests {
                 [id],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
-            .unwrap();
+            .expect("final verification query should succeed");
 
         assert!(thumb.ends_with(".webp"), "缩略图路径应以 .webp 结尾");
         assert_eq!(p, phash, "pHash 应一致");
@@ -2302,39 +2367,50 @@ mod tests {
                 [id],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("AI task count query should succeed");
         assert_eq!(task_count, 1, "应有 1 个 pending AI 任务");
     }
 
     #[test]
     fn test_import_pipeline_thumbnail_failure_does_not_block() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_import_fail_thumb.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // 创建合法图片
         let img_path = create_test_image_file(&temp_dir, "test_thumb_fail.jpg", 640, 480);
-        let path_str = img_path.to_str().unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
 
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
-        let id =
-            insert_image_record(&conn, path_str, "test.jpg", file_size, &hash, &mime_type).unwrap();
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
+        let id = insert_image_record(&conn, path_str, "test.jpg", file_size, &hash, &mime_type)
+            .expect("image record insertion should succeed");
 
         // 使用不存在的图片路径触发缩略图生成失败
         let thumb_result = ImageProcessor::generate_thumbnail(
             "/nonexistent/fake_image.jpg",
-            temp_dir.path().join("thumb.webp").to_str().unwrap(),
+            temp_dir
+                .path()
+                .join("thumb.webp")
+                .to_str()
+                .expect("thumb path should be valid UTF-8"),
         );
         assert!(thumb_result.is_err(), "缩略图生成对不存在图片应失败");
 
         // 但元数据更新应成功
-        let phash = ImageProcessor::calculate_phash(path_str).unwrap();
-        let exif = ImageProcessor::extract_exif(path_str).unwrap();
-        let exif_json = serde_json::to_string(&exif).unwrap();
+        let phash =
+            ImageProcessor::calculate_phash(path_str).expect("pHash calculation should succeed");
+        let exif =
+            ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
+        let exif_json =
+            serde_json::to_string(&exif).expect("EXIF serialization should succeed");
 
         let meta_result = update_image_metadata(&conn, id, "", &phash, 640, 480, &exif_json);
         assert!(meta_result.is_ok(), "元数据更新不应被缩略图失败阻塞");
@@ -2346,20 +2422,24 @@ mod tests {
 
     #[test]
     fn test_import_pipeline_phash_failure_does_not_block() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_import_fail_phash.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         let img_path = create_test_image_file(&temp_dir, "test_phash_fail.jpg", 320, 240);
-        let path_str = img_path.to_str().unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
 
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
-        let id =
-            insert_image_record(&conn, path_str, "test.jpg", file_size, &hash, &mime_type).unwrap();
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
+        let id = insert_image_record(&conn, path_str, "test.jpg", file_size, &hash, &mime_type)
+            .expect("image record insertion should succeed");
 
         // pHash 对不存在文件应失败
         let phash_result = ImageProcessor::calculate_phash("/nonexistent/image.jpg");
@@ -2367,21 +2447,27 @@ mod tests {
 
         // 但其他流程应继续
         let thumb_path = temp_dir.path().join(format!("thumb_{}.webp", id));
-        ImageProcessor::generate_thumbnail(path_str, thumb_path.to_str().unwrap()).unwrap();
+        ImageProcessor::generate_thumbnail(
+            path_str,
+            thumb_path.to_str().expect("thumb path should be valid UTF-8"),
+        )
+        .expect("thumbnail generation should succeed");
 
-        let exif = ImageProcessor::extract_exif(path_str).unwrap();
-        let exif_json = serde_json::to_string(&exif).unwrap();
+        let exif =
+            ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
+        let exif_json =
+            serde_json::to_string(&exif).expect("EXIF serialization should succeed");
         update_image_metadata(
             &conn,
             id,
-            thumb_path.to_str().unwrap(),
+            thumb_path.to_str().expect("thumb path should be valid UTF-8"),
             "",
             320,
             240,
             &exif_json,
         )
-        .unwrap();
-        create_ai_task(&conn, id).unwrap();
+        .expect("image metadata update should succeed");
+        create_ai_task(&conn, id).expect("AI task creation should succeed");
 
         // 记录应存在且 AI 任务已创建
         let task_count: i32 = conn
@@ -2390,27 +2476,31 @@ mod tests {
                 [id],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("AI task count query should succeed");
         assert_eq!(task_count, 1, "AI 任务应已创建");
     }
 
     #[test]
     fn test_check_broken_links_detects_missing_files() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_broken_links.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // Insert images: one with existing file, one with non-existing file
         let img_path = create_test_image_file(&temp_dir, "exists.jpg", 100, 100);
-        let path_str = img_path.to_str().unwrap();
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
         let id_exists =
             insert_image_record(&conn, path_str, "exists.jpg", file_size, &hash, &mime_type)
-                .unwrap();
+                .expect("image record insertion should succeed");
 
         // Insert record with non-existing file path
         let id_broken: i64 = conn.query_row(
@@ -2419,12 +2509,12 @@ mod tests {
              RETURNING id",
             [],
             |row| row.get(0),
-        ).unwrap();
+        ).expect("broken image record insertion should succeed");
 
         // Simulate check_broken_links logic
         let mut stmt = conn
             .prepare("SELECT id, file_path, file_name FROM images")
-            .unwrap();
+            .expect("query preparation should succeed");
         let rows = stmt
             .query_map([], |row| {
                 Ok((
@@ -2433,7 +2523,7 @@ mod tests {
                     row.get::<_, String>(2)?,
                 ))
             })
-            .unwrap();
+            .expect("query execution should succeed");
 
         let mut broken_images: Vec<BrokenLinkInfo> = Vec::new();
         let mut ids_to_mark: Vec<i64> = Vec::new();
@@ -2459,7 +2549,7 @@ mod tests {
                 "UPDATE images SET ai_status = 'broken_link' WHERE id = ?",
                 rusqlite::params![id],
             )
-            .unwrap();
+            .expect("broken link status update should succeed");
         }
 
         // Verify status was updated
@@ -2469,7 +2559,7 @@ mod tests {
                 [id_broken],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("status query should succeed");
         assert_eq!(status, "broken_link", "失效图片应被标记为 broken_link");
 
         // Existing file should NOT be marked
@@ -2479,26 +2569,30 @@ mod tests {
                 [id_exists],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("existing image status query should succeed");
         assert_eq!(existing_status, "pending", "有效文件不应被标记");
     }
 
     #[test]
     fn test_check_broken_links_all_files_exist() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_no_broken.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // Insert images with existing files only
         for i in 1..=3 {
             let img_path =
                 create_test_image_file(&temp_dir, &format!("img{}.jpg", i), 50 * i, 50 * i);
-            let path_str = img_path.to_str().unwrap();
-            let (mime_type, file_size) = validate_file(&img_path).unwrap();
-            let hash = calculate_sha256(&img_path).unwrap();
+            let path_str = img_path.to_str().expect("image path should be valid UTF-8");
+            let (mime_type, file_size) =
+                validate_file(&img_path).expect("test image file should be valid");
+            let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
             insert_image_record(
                 &conn,
                 path_str,
@@ -2507,13 +2601,13 @@ mod tests {
                 &hash,
                 &mime_type,
             )
-            .unwrap();
+            .expect("image record insertion should succeed");
         }
 
         // Simulate check_broken_links logic
         let mut stmt = conn
             .prepare("SELECT id, file_path, file_name FROM images")
-            .unwrap();
+            .expect("query preparation should succeed");
         let rows = stmt
             .query_map([], |row| {
                 Ok((
@@ -2522,7 +2616,7 @@ mod tests {
                     row.get::<_, String>(2)?,
                 ))
             })
-            .unwrap();
+            .expect("query execution should succeed");
 
         let mut broken_count = 0;
         for (_id, file_path, _file_name) in rows.flatten() {
@@ -2536,18 +2630,22 @@ mod tests {
 
     #[test]
     fn test_archive_image_copies_file_to_archive_dir() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_archive.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // Create a test image
         let img_path = create_test_image_file(&temp_dir, "archive_me.jpg", 200, 200);
-        let path_str = img_path.to_str().unwrap();
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
         let _id = insert_image_record(
             &conn,
             path_str,
@@ -2556,11 +2654,11 @@ mod tests {
             &hash,
             &mime_type,
         )
-        .unwrap();
+        .expect("image record insertion should succeed");
 
         // Simulate archive logic: copy to archive directory
         let archive_dir = temp_dir.path().join("archive_images");
-        fs::create_dir_all(&archive_dir).unwrap();
+        fs::create_dir_all(&archive_dir).expect("archive directory creation should succeed");
 
         let source = Path::new(&path_str);
         assert!(source.exists(), "源文件应存在");
@@ -2571,19 +2669,22 @@ mod tests {
         assert!(dest.exists(), "归档文件应存在");
 
         // Verify content matches
-        let src_content = fs::read(source).unwrap();
-        let dest_content = fs::read(&dest).unwrap();
+        let src_content = fs::read(source).expect("source file read should succeed");
+        let dest_content = fs::read(&dest).expect("destination file read should succeed");
         assert_eq!(src_content, dest_content, "归档文件内容应与原文件一致");
     }
 
     #[test]
     fn test_archive_image_nonexistent_source() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_archive_missing.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // Insert record with non-existing file
         let id: i64 = conn.query_row(
@@ -2592,14 +2693,14 @@ mod tests {
              RETURNING id",
             [],
             |row| row.get(0),
-        ).unwrap();
+        ).expect("broken image record insertion should succeed");
 
         // Verify file doesn't exist
         let file_path: String = conn
             .query_row("SELECT file_path FROM images WHERE id = ?", [id], |row| {
                 row.get(0)
             })
-            .unwrap();
+            .expect("file path query should succeed");
 
         assert!(!Path::new(&file_path).exists(), "文件应不存在");
         // Archive should return error for non-existing source
@@ -2607,21 +2708,25 @@ mod tests {
 
     #[test]
     fn test_safe_export_batch_copies_files() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_export.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // Create test images
         let mut ids = Vec::new();
         for i in 1..=3 {
             let img_path =
                 create_test_image_file(&temp_dir, &format!("export_{}.jpg", i), 100, 100);
-            let path_str = img_path.to_str().unwrap();
-            let (mime_type, file_size) = validate_file(&img_path).unwrap();
-            let hash = calculate_sha256(&img_path).unwrap();
+            let path_str = img_path.to_str().expect("image path should be valid UTF-8");
+            let (mime_type, file_size) =
+                validate_file(&img_path).expect("test image file should be valid");
+            let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
             let id = insert_image_record(
                 &conn,
                 path_str,
@@ -2630,13 +2735,13 @@ mod tests {
                 &hash,
                 &mime_type,
             )
-            .unwrap();
+            .expect("image record insertion should succeed");
             ids.push(id);
         }
 
         // Simulate safe_export: copy to dest directory
         let dest_dir = temp_dir.path().join("exported");
-        fs::create_dir_all(&dest_dir).unwrap();
+        fs::create_dir_all(&dest_dir).expect("export directory creation should succeed");
 
         let mut exported_count = 0;
         let mut errors: Vec<SafeExportError> = Vec::new();
@@ -2694,21 +2799,25 @@ mod tests {
 
     #[test]
     fn test_safe_export_handles_missing_and_nonexistent() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_export_errors.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // Create one valid image
         let img_path = create_test_image_file(&temp_dir, "valid.jpg", 50, 50);
-        let path_str = img_path.to_str().unwrap();
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
         let valid_id =
             insert_image_record(&conn, path_str, "valid.jpg", file_size, &hash, &mime_type)
-                .unwrap();
+                .expect("image record insertion should succeed");
 
         // Insert one with non-existing file
         let broken_id: i64 = conn.query_row(
@@ -2717,12 +2826,12 @@ mod tests {
              RETURNING id",
             [],
             |row| row.get(0),
-        ).unwrap();
+        ).expect("broken image record insertion should succeed");
 
         // Simulate safe_export with both valid and broken IDs plus a non-existent ID
         let test_ids = vec![valid_id, broken_id, 9999];
         let dest_dir = temp_dir.path().join("export_test_errors");
-        fs::create_dir_all(&dest_dir).unwrap();
+        fs::create_dir_all(&dest_dir).expect("export directory creation should succeed");
 
         let mut exported_count = 0;
         let mut errors: Vec<SafeExportError> = Vec::new();
@@ -2782,27 +2891,32 @@ mod tests {
 
     #[test]
     fn test_safe_export_duplicate_filename_handling() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp dir creation should succeed");
         let db_path = temp_dir.path().join("test_export_dup.db");
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.init().unwrap();
+        let db = Database::new_from_path(db_path.to_str().expect("db path should be valid UTF-8"))
+            .expect("database creation should succeed");
+        db.init().expect("database initialization should succeed");
 
-        let conn = db.open_connection().unwrap();
+        let conn = db
+            .open_connection()
+            .expect("database connection should be available");
 
         // Create test image
         let img_path = create_test_image_file(&temp_dir, "dup.jpg", 80, 80);
-        let path_str = img_path.to_str().unwrap();
-        let (mime_type, file_size) = validate_file(&img_path).unwrap();
-        let hash = calculate_sha256(&img_path).unwrap();
+        let path_str = img_path.to_str().expect("image path should be valid UTF-8");
+        let (mime_type, file_size) =
+            validate_file(&img_path).expect("test image file should be valid");
+        let hash = calculate_sha256(&img_path).expect("SHA256 calculation should succeed");
         let _id =
-            insert_image_record(&conn, path_str, "dup.jpg", file_size, &hash, &mime_type).unwrap();
+            insert_image_record(&conn, path_str, "dup.jpg", file_size, &hash, &mime_type)
+                .expect("image record insertion should succeed");
 
         let dest_dir = temp_dir.path().join("export_dup_test");
-        fs::create_dir_all(&dest_dir).unwrap();
+        fs::create_dir_all(&dest_dir).expect("export directory creation should succeed");
 
         // Pre-create a file with the same name
         let pre_existing = dest_dir.join("dup.jpg");
-        File::create(&pre_existing).unwrap();
+        File::create(&pre_existing).expect("pre-existing file creation should succeed");
         assert!(pre_existing.exists(), "预存文件应存在");
 
         // Simulate export with duplicate handling
@@ -2827,12 +2941,16 @@ mod tests {
 
         // Should be dup_1.jpg
         assert_eq!(
-            final_target.file_name().unwrap().to_str().unwrap(),
+            final_target
+                .file_name()
+                .expect("final target should have a filename")
+                .to_str()
+                .expect("filename should be valid UTF-8"),
             "dup_1.jpg"
         );
 
         // Copy should succeed
-        fs::copy(&img_path, &final_target).unwrap();
+        fs::copy(&img_path, &final_target).expect("file copy should succeed");
         assert!(final_target.exists(), "重命名后的导出文件应存在");
     }
 }

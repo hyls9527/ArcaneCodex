@@ -151,7 +151,9 @@ fn apply_tag_operation(
     new_tags: &[String],
     operation: &TagOperation,
 ) -> AppResult<()> {
-    let current_tags_json: String = conn
+    let tx = conn.unchecked_transaction()?;
+
+    let current_tags_json: String = tx
         .query_row(
             "SELECT ai_tags FROM images WHERE id = ?1",
             rusqlite::params![image_id],
@@ -184,7 +186,7 @@ fn apply_tag_operation(
     let updated_tags_json = serde_json::to_string(&updated_tags)
         .map_err(|e| AppError::validation(format!("标签序列化失败: {}", e)))?;
 
-    conn.execute(
+    tx.execute(
         "UPDATE images SET ai_tags = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
         rusqlite::params![updated_tags_json, image_id],
     )?;
@@ -192,10 +194,12 @@ fn apply_tag_operation(
     let old_tags_json = serde_json::to_string(&old_tags)
         .map_err(|e| AppError::validation(format!("旧标签序列化失败: {}", e)))?;
 
-    conn.execute(
+    tx.execute(
         "INSERT INTO tag_corrections (image_id, old_tags, new_tags) VALUES (?1, ?2, ?3)",
         rusqlite::params![image_id, old_tags_json, updated_tags_json],
     )?;
+
+    tx.commit()?;
 
     Ok(())
 }

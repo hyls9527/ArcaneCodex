@@ -33,23 +33,24 @@ pub fn record_tag_correction(
     }
 
     let conn = db.open_connection()?;
+    let tx = conn.unchecked_transaction()?;
 
     let old_tags_json = serde_json::to_string(&request.old_tags)
         .map_err(|e| AppError::validation(format!("old_tags 序列化失败: {}", e)))?;
     let new_tags_json = serde_json::to_string(&request.new_tags)
         .map_err(|e| AppError::validation(format!("new_tags 序列化失败: {}", e)))?;
 
-    let row_id = conn.execute(
+    tx.execute(
         "INSERT INTO tag_corrections (image_id, old_tags, new_tags) VALUES (?1, ?2, ?3)",
         params![request.image_id, old_tags_json, new_tags_json],
     )?;
 
-    conn.execute(
+    tx.execute(
         "UPDATE images SET ai_tags = ?1 WHERE id = ?2",
         params![new_tags_json, request.image_id],
     )?;
 
-    let mut stmt = conn.prepare(
+    let mut stmt = tx.prepare(
         "INSERT OR REPLACE INTO error_patterns (pattern_name, pattern_description, occurrence_count, last_seen) 
          VALUES (?1, ?2, COALESCE((SELECT occurrence_count FROM error_patterns WHERE pattern_name = ?1), 0) + 1, CURRENT_TIMESTAMP)"
     )?;
@@ -61,8 +62,12 @@ pub fn record_tag_correction(
     );
 
     let _ = stmt.execute(params![pattern_name, pattern_desc]);
+    drop(stmt);
 
-    Ok(row_id as i64)
+    tx.commit()?;
+
+    // 返回受影响的行数（保持原始行为：单行插入返回 1）
+    Ok(1)
 }
 
 #[tauri::command]

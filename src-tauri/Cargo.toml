@@ -71,6 +71,8 @@ aes-gcm = "0.10"
 base64 = "0.22"
 whoami = "1"
 rand = "0.9"
+pbkdf2 = { version = "0.12", features = ["hmac"] }
+hmac = "0.12"
 
 # XMP 元数据互操作
 xmpkit = "0.1"
