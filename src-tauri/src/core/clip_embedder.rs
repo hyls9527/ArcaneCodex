@@ -6,7 +6,6 @@ use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 
 use crate::core::onnx_runtime::{ModelType, OnnxRuntimeManager};
-use crate::core::vector_index::cosine_similarity;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipEmbedding {
@@ -14,14 +13,6 @@ pub struct ClipEmbedding {
     pub embedding: Vec<f32>,
     pub image_path: PathBuf,
     pub created_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SimilarityResult {
-    pub image_id: String,
-    pub image_path: PathBuf,
-    pub similarity: f32,
-    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -100,33 +91,6 @@ impl ClipEmbedder {
             image_path: image_path.to_path_buf(),
             created_at: chrono::Utc::now(),
         })
-    }
-
-    pub async fn batch_embed_images(
-        &self,
-        image_paths: &[&Path],
-    ) -> Vec<(String, ClipResult<ClipEmbedding>)> {
-        let mut results = Vec::new();
-
-        for path in image_paths {
-            let path_str = path.to_string_lossy().to_string();
-            let result = self.embed_image(path).await;
-            results.push((path_str, result));
-        }
-
-        results
-    }
-
-    pub async fn compute_similarity(
-        &self,
-        embedding_a: &[f32],
-        embedding_b: &[f32],
-    ) -> ClipResult<f32> {
-        if embedding_a.len() != embedding_b.len() {
-            return Err(ClipError::InvalidEmbeddingDimension(embedding_a.len()));
-        }
-
-        Ok(cosine_similarity(embedding_a, embedding_b))
     }
 
     fn preprocess_image(img: &DynamicImage) -> ClipResult<Vec<f32>> {

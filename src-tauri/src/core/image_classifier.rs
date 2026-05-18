@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::core::onnx_runtime::{ModelType, OnnxRuntimeManager};
-use crate::utils::error::{AppError, AppResult};
 
 pub const IMAGENET_CLASSES: &[&str] = &[
     "tench",
@@ -1576,22 +1575,6 @@ impl ImageClassifier {
         })
     }
 
-    pub async fn batch_classify(
-        &self,
-        image_paths: &[&std::path::Path],
-        top_n: usize,
-    ) -> Vec<(String, ClassifyResult<ImageClassificationResult>)> {
-        let mut results = Vec::new();
-
-        for path in image_paths {
-            let path_str = path.to_string_lossy().to_string();
-            let result = self.classify_image(path, top_n).await;
-            results.push((path_str, result));
-        }
-
-        results
-    }
-
     fn preprocess_image(img: &DynamicImage) -> ClassifyResult<Vec<f32>> {
         let resized = img.resize_exact(224, 224, image::imageops::FilterType::Lanczos3);
 
@@ -1640,31 +1623,4 @@ impl ImageClassifier {
         all_predictions.into_iter().take(n).collect()
     }
 
-    pub fn get_imagenet_classes() -> &'static [&'static str] {
-        IMAGENET_CLASSES
-    }
-
-    /// SAFE-05: Error boundary for classify_image. Catches errors from image processing
-    /// or ONNX runtime, logs them with full context, and returns a typed AppError.
-    /// Prevents one corrupt image from crashing the entire classification pipeline.
-    pub async fn classify_image_safe(
-        &self,
-        image_path: &std::path::Path,
-        top_n: usize,
-    ) -> AppResult<ImageClassificationResult> {
-        match self.classify_image(image_path, top_n).await {
-            Ok(result) => Ok(result),
-            Err(e) => {
-                tracing::error!(
-                    "图像分类失败 (path: {}): {}",
-                    image_path.display(),
-                    e
-                );
-                Err(AppError::AI {
-                    code: "AI_002".to_string(),
-                    message: format!("图像分类失败: {}", e),
-                })
-            }
-        }
-    }
 }
