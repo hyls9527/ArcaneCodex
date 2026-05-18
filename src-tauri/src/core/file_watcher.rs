@@ -57,14 +57,32 @@ impl FileWatcherService {
             .watch(dir, RecursiveMode::Recursive)
             .map_err(|e| format!("监控目录失败: {}", e))?;
 
-        self.watcher.lock().unwrap().replace(watcher);
-        self.watched_paths.lock().unwrap().insert(dir.to_path_buf());
+        self.watcher
+            .lock()
+            .map_err(|e| format!("watcher mutex poisoned: {}", e))?
+            .replace(watcher);
+        self.watched_paths
+            .lock()
+            .map_err(|e| format!("paths mutex poisoned: {}", e))?
+            .insert(dir.to_path_buf());
         Ok(())
     }
 
     pub fn unwatch(&self) {
-        if let Some(mut w) = self.watcher.lock().unwrap().take() {
-            let paths: Vec<PathBuf> = self.watched_paths.lock().unwrap().drain().collect();
+        if let Some(mut w) = self
+            .watcher
+            .lock()
+            .map_err(|e| format!("watcher mutex poisoned: {}", e))
+            .ok()
+            .and_then(|mut w| w.take())
+        {
+            let paths: Vec<PathBuf> = self
+                .watched_paths
+                .lock()
+                .map_err(|e| format!("paths mutex poisoned: {}", e))
+                .ok()
+                .map(|mut set| set.drain().collect())
+                .unwrap_or_default();
             for path in &paths {
                 let _ = w.unwatch(path);
             }
@@ -72,6 +90,6 @@ impl FileWatcherService {
     }
 
     pub fn get_watched_count(&self) -> usize {
-        self.watched_paths.lock().unwrap().len()
+        self.watched_paths.lock().map(|set| set.len()).unwrap_or(0)
     }
 }
