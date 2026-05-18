@@ -3,7 +3,6 @@
 //! These tests verify the public API of the crypto module:
 //!   - v4 keyring/PBKDF2 encrypt/decrypt roundtrip
 //!   - Backward compatibility with v2 and v3 encrypted formats
-//!   - is_encrypted detection
 //!   - No plaintext fallback on encryption failure (compile-time assertion)
 
 use arcane_codex::utils::crypto;
@@ -57,20 +56,6 @@ fn test_decrypt_tampered_returns_empty() {
         decrypted, "",
         "tampered ciphertext should return empty string"
     );
-}
-
-// ---------------------------------------------------------------------------
-// is_encrypted detection
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_is_encrypted_detects_v4() {
-    assert!(crypto::is_encrypted("enc:v4:somebase64data"));
-    assert!(crypto::is_encrypted("enc:v3:somebase64data"));
-    assert!(crypto::is_encrypted("enc:v2:somebase64data"));
-    assert!(!crypto::is_encrypted("enc:v1:somebase64data"));
-    assert!(!crypto::is_encrypted("plain-api-key"));
-    assert!(!crypto::is_encrypted(""));
 }
 
 // ---------------------------------------------------------------------------

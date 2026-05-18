@@ -45,8 +45,8 @@ impl Database {
         })
     }
 
-    #[cfg(test)]
-    /// Creates a new Database instance from a specific file path. Test-only; uses #[cfg(test)].
+    /// Creates a new Database instance from a specific file path. For integration testing.
+    #[allow(dead_code)]
     pub fn new_from_path(path: &str) -> Result<Self> {
         let db_path = PathBuf::from(path);
         let pool = Self::create_pool(&db_path)?;

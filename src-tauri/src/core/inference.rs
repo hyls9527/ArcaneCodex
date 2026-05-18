@@ -1005,4 +1005,193 @@ mod tests {
         ];
         std::fs::write(path, png).unwrap();
     }
+
+    // --- Mock-based inference provider tests ---
+
+    #[tokio::test]
+    async fn test_lmstudio_health_check_success() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let _mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[{"id":"model1","owned_by":"me"}]}"#)
+            .create_async()
+            .await;
+
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::LMStudio,
+            base_url: mock_url,
+            model: "model1".to_string(),
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.health_check().await;
+        assert!(result.is_ok());
+        let models = result.unwrap();
+        assert_eq!(models, vec!["model1"]);
+    }
+
+    #[tokio::test]
+    async fn test_lmstudio_health_check_http_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let _mock = server
+            .mock("GET", "/v1/models")
+            .with_status(500)
+            .create_async()
+            .await;
+
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::LMStudio,
+            base_url: mock_url,
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.health_check().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_lmstudio_health_check_empty_models() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let _mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::LMStudio,
+            base_url: mock_url,
+            model: "model1".to_string(),
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.health_check().await;
+        assert!(result.is_ok());
+        let models = result.unwrap();
+        assert!(models.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_lmstudio_check_vision_capability_yes() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let _mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[{"id":"Qwen2.5-VL-7B-Instruct","owned_by":"me"}]}"#)
+            .create_async()
+            .await;
+
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::LMStudio,
+            base_url: mock_url,
+            model: "Qwen2.5-VL-7B-Instruct".to_string(),
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.check_vision_capability().await;
+        assert!(result.is_ok());
+        assert!(
+            result.unwrap(),
+            "VL model should be detected as vision-capable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_lmstudio_check_vision_capability_no() {
+        let mut server = mockito::Server::new_async().await;
+        let mock_url = server.url();
+
+        let _mock = server
+            .mock("GET", "/v1/models")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[{"id":"Qwen2.5-7B-Instruct","owned_by":"me"}]}"#)
+            .create_async()
+            .await;
+
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::LMStudio,
+            base_url: mock_url,
+            model: "Qwen2.5-7B-Instruct".to_string(),
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.check_vision_capability().await;
+        assert!(result.is_ok());
+        assert!(
+            !result.unwrap(),
+            "Non-VL model should not be detected as vision-capable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_openai_health_check_returns_model() {
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::OpenAI,
+            base_url: "https://api.openai.com".to_string(),
+            model: "gpt-4o".to_string(),
+            api_key: Some("sk-test".to_string()),
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.health_check().await;
+        assert!(result.is_ok());
+        let models = result.unwrap();
+        assert_eq!(models, vec!["gpt-4o"]);
+    }
+
+    #[tokio::test]
+    async fn test_openai_check_vision_capability() {
+        // gpt-4o should be vision-capable
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::OpenAI,
+            model: "gpt-4o".to_string(),
+            api_key: Some("sk-test".to_string()),
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.check_vision_capability().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap(), "gpt-4o should be vision-capable");
+
+        // gpt-4-turbo should be vision-capable
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::OpenAI,
+            model: "gpt-4-turbo".to_string(),
+            api_key: Some("sk-test".to_string()),
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.check_vision_capability().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap(), "gpt-4-turbo should be vision-capable");
+
+        // gpt-3.5-turbo should NOT be vision-capable
+        let config = ProviderConfig {
+            provider_type: InferenceProviderType::OpenAI,
+            model: "gpt-3.5-turbo".to_string(),
+            api_key: Some("sk-test".to_string()),
+            ..Default::default()
+        };
+        let provider = ProviderFactory::create(config).unwrap();
+        let result = provider.check_vision_capability().await;
+        assert!(result.is_ok());
+        assert!(
+            !result.unwrap(),
+            "gpt-3.5-turbo should NOT be vision-capable"
+        );
+    }
 }
