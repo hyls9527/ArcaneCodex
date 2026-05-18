@@ -46,7 +46,7 @@ impl Database {
     }
 
     #[cfg(test)]
-        /// Creates a new Database instance from a specific file path. Test-only; uses #[cfg(test)].
+    /// Creates a new Database instance from a specific file path. Test-only; uses #[cfg(test)].
     pub fn new_from_path(path: &str) -> Result<Self> {
         let db_path = PathBuf::from(path);
         let pool = Self::create_pool(&db_path)?;
@@ -56,7 +56,7 @@ impl Database {
         })
     }
 
-        /// Opens a new database connection from the connection pool. Returns a PooledConn that is automatically returned to the pool on drop.
+    /// Opens a new database connection from the connection pool. Returns a PooledConn that is automatically returned to the pool on drop.
     pub fn open_connection(&self) -> Result<PooledConn> {
         self.pool
             .get()
@@ -64,12 +64,12 @@ impl Database {
     }
 
     #[allow(dead_code)]
-        /// Initializes the database by running all pending migrations. Convenience wrapper around run_migrations.
+    /// Initializes the database by running all pending migrations. Convenience wrapper around run_migrations.
     pub fn init(&self) -> Result<()> {
         self.run_migrations()
     }
 
-        /// Runs all pending database migrations sequentially from v1 to the latest version. Each migration is applied exactly once based on PRAGMA user_version tracking.
+    /// Runs all pending database migrations sequentially from v1 to the latest version. Each migration is applied exactly once based on PRAGMA user_version tracking.
     pub fn run_migrations(&self) -> Result<()> {
         let conn = self.open_connection()?;
         info!("Running database migrations...");
@@ -130,7 +130,7 @@ impl Database {
         Ok(())
     }
 
-        /// Migration v1: Creates initial tables (images, tags, image_tags, search_index, task_queue, app_config) and inserts default configuration values.
+    /// Migration v1: Creates initial tables (images, tags, image_tags, search_index, task_queue, app_config) and inserts default configuration values.
     fn apply_v1_initial_schema(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch("
@@ -230,7 +230,7 @@ impl Database {
         Ok(())
     }
 
-        /// Migration v2: Adds ComfyUI image generation support columns (generation_source, generation_metadata, generation_workflow_id).
+    /// Migration v2: Adds ComfyUI image generation support columns (generation_source, generation_metadata, generation_workflow_id).
     fn apply_v2_comfyui_generation(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -248,7 +248,7 @@ impl Database {
         Ok(())
     }
 
-        /// Migration v3: Creates narratives, semantic_edges tables for the narrative anchor system.
+    /// Migration v3: Creates narratives, semantic_edges tables for the narrative anchor system.
     fn apply_v3_narrative_anchor(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch("
@@ -286,7 +286,7 @@ impl Database {
         Ok(())
     }
 
-        /// Migration v4: Adds ai_provider column, creates settings table, inserts inference provider configuration defaults.
+    /// Migration v4: Adds ai_provider column, creates settings table, inserts inference provider configuration defaults.
     fn apply_v4_multi_provider(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -315,7 +315,7 @@ impl Database {
         Ok(())
     }
 
-        /// Migration v5: Adds ai_tag_status column, creates calibration_samples, calibration_reports, calibration_curves, tag_corrections, error_patterns tables.
+    /// Migration v5: Adds ai_tag_status column, creates calibration_samples, calibration_reports, calibration_curves, tag_corrections, error_patterns tables.
     fn apply_v5_ai_tag_status(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch("
@@ -401,7 +401,7 @@ impl Database {
         Ok(())
     }
 
-        /// Migration v6: Migrates data from app_config to settings table, drops app_config table.
+    /// Migration v6: Migrates data from app_config to settings table, drops app_config table.
     fn apply_v6_unify_config(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -417,7 +417,7 @@ impl Database {
         Ok(())
     }
 
-        /// Migration v7: Creates xmp_sidecars table for XMP metadata sidecar file synchronization.
+    /// Migration v7: Creates xmp_sidecars table for XMP metadata sidecar file synchronization.
     fn apply_v7_xmp_sidecars(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -442,7 +442,7 @@ impl Database {
         Ok(())
     }
 
-        /// Migration v8: Creates kg_nodes, kg_edges, kg_communities tables for knowledge graph persistence.
+    /// Migration v8: Creates kg_nodes, kg_edges, kg_communities tables for knowledge graph persistence.
     fn apply_v8_knowledge_graph(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
