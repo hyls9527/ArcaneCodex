@@ -42,14 +42,6 @@ impl ModelType {
         }
     }
 
-    pub fn output_dim(&self) -> usize {
-        match self {
-            ModelType::ImageClassification => 1000,
-            ModelType::FaceDetection => 42000,
-            ModelType::FaceRecognition => 512,
-            ModelType::ClipEmbedding => 512,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -291,28 +283,6 @@ impl OnnxRuntimeManager {
 
         tracing::info!(model = model_type.as_str(), "模型预热完成");
         Ok(())
-    }
-
-    pub fn get_models_dir(&self) -> &Path {
-        &self.models_dir
-    }
-
-    pub async fn list_available_models(&self) -> Vec<PathBuf> {
-        let mut models = Vec::new();
-
-        if self.models_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&self.models_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) == Some("onnx") {
-                        models.push(path);
-                    }
-                }
-            }
-        }
-
-        models.sort();
-        models
     }
 }
 

@@ -52,7 +52,6 @@ pub enum FaceError {
     ImageProcessingFailed(String),
     InferenceFailed(String),
     NoFacesDetected,
-    InvalidInput(String),
 }
 
 impl std::fmt::Display for FaceError {
@@ -62,7 +61,6 @@ impl std::fmt::Display for FaceError {
             FaceError::ImageProcessingFailed(msg) => write!(f, "图像处理失败: {}", msg),
             FaceError::InferenceFailed(msg) => write!(f, "推理失败: {}", msg),
             FaceError::NoFacesDetected => write!(f, "未检测到人脸"),
-            FaceError::InvalidInput(msg) => write!(f, "无效输入: {}", msg),
         }
     }
 }
@@ -212,47 +210,9 @@ impl FaceDetector {
         Ok(best_match)
     }
 
-    pub async fn find_similar_faces(
-        &self,
-        query_embedding: &[f32],
-        top_k: usize,
-        min_similarity: f32,
-    ) -> FaceResult<Vec<FaceMatch>> {
-        let embeddings = self.face_embeddings.read().await;
-
-        let mut matches: Vec<FaceMatch> = Vec::new();
-
-        for (face_id, stored_embedding) in embeddings.iter() {
-            let similarity = cosine_similarity(query_embedding, &stored_embedding.embedding);
-
-            if similarity >= min_similarity {
-                matches.push(FaceMatch {
-                    face_id: face_id.clone(),
-                    similarity,
-                    face_embedding: stored_embedding.clone(),
-                });
-            }
-        }
-
-        drop(embeddings);
-
-        matches.sort_by(|a, b| {
-            b.similarity
-                .partial_cmp(&a.similarity)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        Ok(matches.into_iter().take(top_k).collect())
-    }
-
     pub async fn get_registered_count(&self) -> usize {
         let embeddings = self.face_embeddings.read().await;
         embeddings.len()
-    }
-
-    pub async fn unregister_face(&self, face_id: &str) -> bool {
-        let mut embeddings = self.face_embeddings.write().await;
-        embeddings.remove(face_id).is_some()
     }
 
     fn preprocess_for_detection(img: &DynamicImage) -> FaceResult<(Vec<f32>, (u32, u32))> {

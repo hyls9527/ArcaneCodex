@@ -1,6 +1,5 @@
-#![allow(missing_docs)]
+﻿#![allow(missing_docs)]
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -31,36 +30,22 @@ pub struct IndexStats {
 
 #[derive(Debug)]
 pub enum VectorIndexError {
-    IndexNotInitialized,
     DimensionMismatch {
         expected: usize,
         got: usize,
     },
     EmptyVector,
-    InsertFailed(String),
-    SearchFailed(String),
-    SerializationError(String),
-    DeserializationError(String),
     Io(std::io::Error),
 }
 
 impl std::fmt::Display for VectorIndexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VectorIndexError::IndexNotInitialized => write!(f, "向量索引未初始化"),
             VectorIndexError::DimensionMismatch { expected, got } => {
-                write!(f, "维度不匹配: 预期 {}, 实际 {}", expected, got)
+                write!(f, "ç»´åº¦ä¸å¹é? é¢æ {}, å®é {}", expected, got)
             }
-            VectorIndexError::EmptyVector => write!(f, "向量不能为空"),
-            VectorIndexError::InsertFailed(msg) => write!(f, "插入失败: {}", msg),
-            VectorIndexError::SearchFailed(msg) => write!(f, "搜索失败: {}", msg),
-            VectorIndexError::SerializationError(msg) => {
-                write!(f, "序列化失败: {}", msg)
-            }
-            VectorIndexError::DeserializationError(msg) => {
-                write!(f, "反序列化失败: {}", msg)
-            }
-            VectorIndexError::Io(e) => write!(f, "IO错误: {}", e),
+            VectorIndexError::EmptyVector => write!(f, "åéä¸è½ä¸ºç©º"),
+            VectorIndexError::Io(e) => write!(f, "IOéè¯¯: {}", e),
         }
     }
 }
@@ -78,20 +63,17 @@ pub type VectorResult<T> = std::result::Result<T, VectorIndexError>;
 pub struct BruteForceVectorIndex {
     dimension: usize,
     entries: Arc<tokio::sync::RwLock<HashMap<String, VectorEntry>>>,
-    index_dir: PathBuf,
 }
 
 impl BruteForceVectorIndex {
-    pub fn new(dimension: usize, index_dir: &Path) -> Self {
+    pub fn new(dimension: usize) -> Self {
         tracing::info!(
             dimension = dimension,
-            path = %index_dir.display(),
-            "初始化HNSW向量索引"
+            "åå§åæ´ååéç´¢å¼"
         );
         Self {
             dimension,
             entries: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            index_dir: index_dir.to_path_buf(),
         }
     }
 
@@ -111,20 +93,6 @@ impl BruteForceVectorIndex {
         entries.insert(entry.id.clone(), entry);
 
         Ok(())
-    }
-
-    pub async fn batch_insert(&self, entries: Vec<VectorEntry>) -> VectorResult<(usize, usize)> {
-        let mut success_count = 0;
-        let mut fail_count = 0;
-
-        for entry in entries {
-            match self.insert(entry).await {
-                Ok(()) => success_count += 1,
-                Err(_) => fail_count += 1,
-            }
-        }
-
-        Ok((success_count, fail_count))
     }
 
     pub async fn search(
@@ -176,31 +144,6 @@ impl BruteForceVectorIndex {
         entries.remove(id).is_some()
     }
 
-    pub async fn get(&self, id: &str) -> Option<VectorEntry> {
-        let entries = self.entries.read().await;
-        entries.get(id).cloned()
-    }
-
-    pub async fn contains(&self, id: &str) -> bool {
-        let entries = self.entries.read().await;
-        entries.contains_key(id)
-    }
-
-    pub async fn count(&self) -> usize {
-        let entries = self.entries.read().await;
-        entries.len()
-    }
-
-    pub fn get_dimension(&self) -> usize {
-        self.dimension
-    }
-
-    pub async fn clear(&self) -> VectorResult<()> {
-        let mut entries = self.entries.write().await;
-        entries.clear();
-        Ok(())
-    }
-
     pub async fn get_stats(&self) -> IndexStats {
         let entries = self.entries.read().await;
 
@@ -220,66 +163,6 @@ impl BruteForceVectorIndex {
             last_updated: chrono::Utc::now(),
         }
     }
-
-    pub async fn save_to_file(&self, filename: &str) -> VectorResult<PathBuf> {
-        let entries = self.entries.read().await;
-
-        let data: HashMap<String, VectorEntry> = entries
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        let json_data = serde_json::to_string_pretty(&data)
-            .map_err(|e| VectorIndexError::SerializationError(e.to_string()))?;
-
-        drop(entries);
-
-        if !self.index_dir.exists() {
-            std::fs::create_dir_all(&self.index_dir)?;
-        }
-
-        let file_path = self.index_dir.join(filename);
-        std::fs::write(&file_path, json_data)?;
-
-        tracing::info!(
-            path = %file_path.display(),
-            "向量索引已保存"
-        );
-
-        Ok(file_path)
-    }
-
-    pub async fn load_from_file(&self, filename: &str) -> VectorResult<usize> {
-        let file_path = self.index_dir.join(filename);
-
-        if !file_path.exists() {
-            return Err(VectorIndexError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("文件不存在: {}", file_path.display()),
-            )));
-        }
-
-        let json_data = std::fs::read_to_string(&file_path)?;
-
-        let loaded_entries: HashMap<String, VectorEntry> = serde_json::from_str(&json_data)
-            .map_err(|e| VectorIndexError::DeserializationError(e.to_string()))?;
-
-        let count = loaded_entries.len();
-
-        let mut entries = self.entries.write().await;
-        for (id, entry) in loaded_entries.into_iter() {
-            entries.insert(id, entry);
-        }
-        drop(entries);
-
-        tracing::info!(
-            path = %file_path.display(),
-            count,
-            "向量索引已加载"
-        );
-
-        Ok(count)
-    }
 }
 
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -297,3 +180,4 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
     dot_product / (norm_a * norm_b)
 }
+
