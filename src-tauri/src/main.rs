@@ -163,23 +163,11 @@ fn main() {
                 }
             }
 
-            let vector_index_dir = app
-                .path()
-                .app_data_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .join("vector_index");
-
-            if !vector_index_dir.exists() {
-                if let Err(e) = std::fs::create_dir_all(&vector_index_dir) {
-                    tracing::warn!("创建 vector_index 目录失败: {}", e);
-                }
-            }
-
             let onnx_manager = Arc::new(OnnxRuntimeManager::new(&models_dir));
             let classifier = Arc::new(ImageClassifier::new(onnx_manager.clone()));
             let face_detector = Arc::new(FaceDetector::new(onnx_manager.clone()));
             let clip_embedder = Arc::new(ClipEmbedder::new(onnx_manager.clone()));
-            let vector_index = Arc::new(BruteForceVectorIndex::new(512, &vector_index_dir));
+            let vector_index = Arc::new(BruteForceVectorIndex::new(512));
 
             app.manage(commands::ai_core::AppState {
                 onnx_manager,
@@ -192,7 +180,6 @@ fn main() {
             let kg_engine = Arc::new(KnowledgeGraphEngine::new(
                 Arc::new(db.clone()),
                 clip_embedder,
-                vector_index,
             ));
             app.manage(commands::knowledge_graph::KgState { engine: kg_engine });
 

@@ -94,31 +94,6 @@ fn get_keyring_master_key() -> Result<[u8; 32], String> {
     }
 }
 
-/// 获取 v4 加密密钥：优先 OS 密钥环，回退到 PBKDF2 派生
-fn get_encryption_key_v4() -> AppResult<[u8; 32]> {
-    match get_keyring_master_key() {
-        Ok(key) => {
-            info!("Using OS keyring encryption key (v4)");
-            Ok(key)
-        }
-        Err(e) => {
-            warn!("Keyring unavailable, using PBKDF2 fallback: {}", e);
-            let machine_id = format!(
-                "{}:{}:{:?}:{:?}",
-                whoami::fallible::hostname().unwrap_or_default(),
-                whoami::fallible::username().unwrap_or_default(),
-                whoami::platform(),
-                whoami::arch(),
-            );
-            let salt: [u8; 16] = rand::random();
-            let mut key = [0u8; 32];
-            pbkdf2_hmac::<Sha256>(machine_id.as_bytes(), &salt, PBKDF2_ITERATIONS, &mut key);
-            info!("Using PBKDF2 fallback for encryption key derivation (v4)");
-            Ok(key)
-        }
-    }
-}
-
 pub fn encrypt_api_key(plaintext: &str) -> AppResult<String> {
     if plaintext.is_empty() {
         return Ok(String::new());

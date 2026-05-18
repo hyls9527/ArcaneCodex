@@ -57,6 +57,7 @@ pub struct AIProgressEvent {
 pub struct AITaskQueue {
     sender: mpsc::Sender<AITask>,
     receiver: Arc<TokioMutex<Option<mpsc::Receiver<AITask>>>>,
+    #[expect(dead_code)]
     command_sender: mpsc::Sender<QueueCommand>,
     command_receiver: Arc<TokioMutex<Option<mpsc::Receiver<QueueCommand>>>>,
     is_running: Arc<AtomicBool>,
@@ -98,10 +99,6 @@ impl AITaskQueue {
 
     pub fn db(&self) -> &Database {
         &self.db
-    }
-
-    pub fn set_concurrency(&mut self, concurrency: usize) {
-        self.concurrency = concurrency.clamp(1, 10);
     }
 
     pub fn start(&self) {

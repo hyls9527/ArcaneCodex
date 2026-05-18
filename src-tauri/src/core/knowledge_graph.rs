@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::clip_embedder::ClipEmbedder;
 use crate::core::db::Database;
-use crate::core::vector_index::{cosine_similarity, BruteForceVectorIndex};
+use crate::core::vector_index::cosine_similarity;
 
 type AdjacencyMap = Arc<tokio::sync::RwLock<HashMap<String, HashSet<(String, String)>>>>;
 type NodeMap = Arc<tokio::sync::RwLock<HashMap<String, GraphNode>>>;
@@ -134,36 +134,25 @@ pub struct NeighborResult {
 pub struct KnowledgeGraphEngine {
     db: Arc<Database>,
     clip_embedder: Arc<ClipEmbedder>,
-    vector_index: Arc<BruteForceVectorIndex>,
     nodes: NodeMap,
     edges: EdgeMap,
     adjacency: AdjacencyMap,
     communities: CommunityList,
-    edge_thresholds: HashMap<EdgeType, f32>,
 }
 
 impl KnowledgeGraphEngine {
     pub fn new(
         db: Arc<Database>,
         clip_embedder: Arc<ClipEmbedder>,
-        vector_index: Arc<BruteForceVectorIndex>,
     ) -> Self {
-        let mut thresholds = HashMap::new();
-        thresholds.insert(EdgeType::SemanticSimilarity, 0.7);
-        thresholds.insert(EdgeType::TagOverlap, 0.3);
-        thresholds.insert(EdgeType::TemporalProximity, 86400.0);
-        thresholds.insert(EdgeType::FaceMatch, 0.6);
-
         tracing::info!("初始化知识图谱引擎");
         Self {
             db,
             clip_embedder,
-            vector_index,
             nodes: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             edges: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             adjacency: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             communities: Arc::new(tokio::sync::RwLock::new(Vec::new())),
-            edge_thresholds: thresholds,
         }
     }
 

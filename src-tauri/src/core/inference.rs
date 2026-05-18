@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use crate::core::lm_studio::parse_ai_response;
 use crate::utils::error::{AppError, AppResult};
-use tracing::{error as trace_error, info, warn};
+use tracing::info;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
