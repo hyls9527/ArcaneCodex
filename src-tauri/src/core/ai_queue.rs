@@ -580,36 +580,34 @@ impl Worker {
             Err(_) => return ProviderConfig::default(),
         };
 
-        conn.query_row(
-            "SELECT key, value FROM settings WHERE key IN ('inference_provider', 'inference_model', 'inference_api_key')",
-            [],
-            |_| { Ok(()) }
-        ).ok();
 
-        let provider_type = conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = 'inference_provider'",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .unwrap_or_else(|_| "lm_studio".to_string());
+        // Single query replaces 3 individual lookups
+        let mut stmt = match conn.prepare(
+            "SELECT key, value FROM settings WHERE key IN ('inference_provider', 'inference_model', 'inference_api_key')"
+        ) {
+            Ok(s) => s,
+            Err(_) => return ProviderConfig::default(),
+        };
+        let rows: Vec<(String, String)> = match stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(_) => return ProviderConfig::default(),
+        };
 
-        let model = conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = 'inference_model'",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .unwrap_or_else(|_| "Qwen2.5-VL-7B-Instruct".to_string());
+        let provider_type = rows.iter()
+            .find(|(k, _)| k == "inference_provider")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| "lm_studio".to_string());
 
-        let api_key = conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = 'inference_api_key'",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .ok()
-            .map(|k| crypto::decrypt_api_key(&k))
+        let model = rows.iter()
+            .find(|(k, _)| k == "inference_model")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| "Qwen2.5-VL-7B-Instruct".to_string());
+
+        let api_key = rows.iter()
+            .find(|(k, _)| k == "inference_api_key")
+            .map(|(_, v)| crypto::decrypt_api_key(v).unwrap_or_default())
             .filter(|k| !k.is_empty());
 
         use crate::core::inference::InferenceProviderType;

@@ -43,7 +43,7 @@ pub async fn get_inference_config(db: State<'_, Database>) -> AppResult<Inferenc
         )
         .ok()
         .filter(|k| !k.is_empty())
-        .map(|k| crypto::decrypt_api_key(&k));
+        .and_then(|k| crypto::decrypt_api_key(&k).ok());
 
     let timeout_secs = conn
         .query_row(
@@ -70,7 +70,7 @@ pub async fn set_inference_provider(
     model: String,
     api_key: Option<String>,
 ) -> AppResult<()> {
-    let conn = db.open_connection().map_err(AppError::database)?;
+    let mut conn = db.open_connection().map_err(AppError::database)?;
 
     let ptype = match provider.as_str() {
         "lm_studio" => InferenceProviderType::LMStudio,
@@ -86,25 +86,29 @@ pub async fn set_inference_provider(
         }
     };
 
-    conn.execute(
+    let tx = conn.transaction().map_err(AppError::database)?;
+
+    tx.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('inference_provider', ?1)",
         rusqlite::params![format!("{:?}", ptype).to_lowercase()],
     )
     .map_err(AppError::database)?;
 
-    conn.execute(
+    tx.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('inference_model', ?1)",
         rusqlite::params![model],
     )
     .map_err(AppError::database)?;
 
     let key_value = api_key.unwrap_or_default();
-    let encrypted_key = crypto::encrypt_api_key(&key_value);
-    conn.execute(
+    let encrypted_key = crypto::encrypt_api_key(&key_value).unwrap_or_default();
+    tx.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('inference_api_key', ?1)",
         rusqlite::params![encrypted_key],
     )
     .map_err(AppError::database)?;
+
+    tx.commit().map_err(AppError::database)?;
 
     info!("推理提供者已切换: {}", provider);
     Ok(())
@@ -139,7 +143,7 @@ pub async fn test_inference_connection(db: State<'_, Database>) -> AppResult<Str
             |row| row.get::<_, String>(0),
         )
         .ok()
-        .map(|k| crypto::decrypt_api_key(&k))
+        .and_then(|k| crypto::decrypt_api_key(&k).ok())
         .filter(|k| !k.is_empty());
 
     let ptype = match provider_type.as_str() {
