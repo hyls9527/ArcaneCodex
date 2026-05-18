@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! API key encryption/decryption using AES-256-GCM with OS keyring or PBKDF2 key derivation.
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
@@ -9,9 +9,13 @@ use sha2::{Digest, Sha256};
 use crate::utils::error::{AppError, AppResult};
 use tracing::{info, warn};
 
+/// Version 1 encryption prefix format (legacy).
 const ENCRYPTION_PREFIX_V1: &str = "enc:v1:";
+/// Version 2 encryption prefix format using single SHA256 key derivation.
 const ENCRYPTION_PREFIX_V2: &str = "enc:v2:";
+/// Version 3 encryption prefix format using PBKDF2-HMAC-SHA256 key derivation.
 const ENCRYPTION_PREFIX_V3: &str = "enc:v3:";
+/// Version 4 encryption prefix format using OS keyring master key or PBKDF2 fallback.
 const ENCRYPTION_PREFIX_V4: &str = "enc:v4:";
 
 /// PBKDF2 迭代次数，遵循 OWASP 2023 推荐
@@ -94,6 +98,7 @@ fn get_keyring_master_key() -> Result<[u8; 32], String> {
     }
 }
 
+/// Encrypts an API key using AES-256-GCM. Uses the OS keyring master key if available, otherwise falls back to PBKDF2-HMAC-SHA256 key derivation from machine identity. Returns the encrypted key string with v4 format prefix.
 pub fn encrypt_api_key(plaintext: &str) -> AppResult<String> {
     if plaintext.is_empty() {
         return Ok(String::new());
@@ -133,6 +138,7 @@ pub fn encrypt_api_key(plaintext: &str) -> AppResult<String> {
     Ok(format!("{}{}", ENCRYPTION_PREFIX_V4, BASE64.encode(&combined)))
 }
 
+/// Decrypts an API key previously encrypted with encrypt_api_key. Supports v4 (keyring or PBKDF2), v3 (PBKDF2), and v2 (SHA256) formats. Falls back to returning the input as-is for plaintext keys or empty strings.
 pub fn decrypt_api_key(ciphertext: &str) -> AppResult<String> {
     if ciphertext.is_empty() {
         return Ok(String::new());

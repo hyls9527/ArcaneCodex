@@ -1,41 +1,72 @@
-#![allow(missing_docs)]
+//! Image data model representing a stored image record from the database.
 use serde::{Deserialize, Serialize};
 
+/// Represents an imported image record in the database. Contains file metadata, AI analysis results, and processing status fields.
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub struct Image {
+    /// Unique database identifier.
     pub id: i64,
+    /// Absolute file path on disk.
     pub file_path: String,
+    /// Original file name.
     pub file_name: String,
+    /// File size in bytes.
     pub file_size: i64,
+    /// SHA-256 hash of the file contents for deduplication.
     pub file_hash: Option<String>,
+    /// MIME type of the image file.
     pub mime_type: Option<String>,
+    /// Image width in pixels.
     pub width: Option<i32>,
+    /// Image height in pixels.
     pub height: Option<i32>,
+    /// Path to the generated thumbnail image.
     pub thumbnail_path: Option<String>,
+    /// Perceptual hash for duplicate detection.
     pub phash: Option<String>,
+    /// EXIF metadata as a JSON object.
     pub exif_data: Option<serde_json::Value>,
+    /// AI processing status (pending, processing, completed, failed).
     pub ai_status: String,
+    /// AI-generated tags as a JSON array.
     pub ai_tags: Option<serde_json::Value>,
+    /// AI-generated description of the image.
     pub ai_description: Option<String>,
+    /// AI-predicted category of the image.
     pub ai_category: Option<String>,
+    /// Confidence score of the AI prediction.
     pub ai_confidence: Option<f64>,
+    /// Name of the AI model used for processing.
     pub ai_model: Option<String>,
+    /// Timestamp when AI processing completed.
     pub ai_processed_at: Option<String>,
+    /// Error message if AI processing failed.
     pub ai_error_message: Option<String>,
+    /// Number of times AI processing has been retried.
     pub ai_retry_count: i32,
+    /// Source of the image (import, generation, etc.).
     pub source: String,
+    /// Source of generation if the image was AI-generated.
     pub generation_source: Option<String>,
+    /// Metadata about the generation process as a JSON object.
     pub generation_metadata: Option<serde_json::Value>,
+    /// Workflow identifier for generated images.
     pub generation_workflow_id: Option<String>,
+    /// AI provider used for processing.
     pub ai_provider: Option<String>,
+    /// Tag verification status.
     pub ai_tag_status: Option<String>,
+    /// Record creation timestamp.
     pub created_at: String,
+    /// Record last update timestamp.
     pub updated_at: String,
 }
 
+/// Image model methods.
 impl Image {
     #[allow(dead_code)]
+    /// Constructs an Image from a database row. Handles JSON field deserialization for exif_data, ai_tags, generation_metadata.
     pub fn from_row(row: &rusqlite::Row<'_>) -> Result<Self, rusqlite::Error> {
         Ok(Self {
             id: row.get(0)?,

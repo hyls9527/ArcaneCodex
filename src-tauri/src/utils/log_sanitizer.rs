@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Log message sanitization to prevent sensitive data exposure. Redacts API keys, tokens, file paths, and URL query parameters from log output.
 use regex::Regex;
 use std::sync::OnceLock;
 
@@ -34,6 +34,7 @@ fn url_sensitive_params() -> &'static Regex {
     })
 }
 
+/// Sanitizes a log message by redacting API keys, bearer tokens, encrypted keys, file paths (Windows and Unix), and sensitive URL query parameters. Returns the sanitized string.
 pub fn sanitize_log_message(msg: &str) -> String {
     if msg.is_empty() || msg.len() < 4 {
         return msg.to_string();
@@ -88,6 +89,7 @@ fn mask_value(value: &str) -> String {
 }
 
 #[allow(dead_code)]
+/// Redacts an API key by masking the middle portion, keeping only first 4 and last 4 characters.
 pub fn redact_api_key(key: &str) -> String {
     if key.is_empty() {
         return String::new();
@@ -96,6 +98,7 @@ pub fn redact_api_key(key: &str) -> String {
 }
 
 #[allow(dead_code)]
+/// Redacts a file path if it matches Windows or Unix path patterns, replacing it with [REDACTED_PATH].
 pub fn redact_path(path: &str) -> String {
     if path.is_empty() {
         return String::new();
@@ -108,6 +111,7 @@ pub fn redact_path(path: &str) -> String {
 }
 
 #[allow(dead_code)]
+/// Redacts sensitive query parameters from a URL by replacing values with [REDACTED].
 pub fn redact_url(url: &str) -> String {
     if url.is_empty() {
         return String::new();
@@ -122,6 +126,7 @@ pub fn redact_url(url: &str) -> String {
     sanitized.to_string()
 }
 
+/// Initializes structured logging with log sanitization. Writes to APPDATA/ArcaneCodex/logs/app.log with INFO level and automatic sensitive data redaction.
 pub fn init_sanitized_logging() {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
@@ -178,6 +183,7 @@ pub fn init_sanitized_logging() {
     }
 }
 
+/// Custom tracing event formatter that applies sanitize_log_message to all log output before writing.
 struct SanitizedEventFormatter;
 
 impl<S, N> tracing_subscriber::fmt::FormatEvent<S, N> for SanitizedEventFormatter

@@ -1,16 +1,24 @@
-#![allow(missing_docs)]
+//! Image category classification enum and string conversion.
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+/// Categorizes an image into one of seven types based on AI analysis: Landscape, Person, Object, Animal, Architecture, Document, or Other.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageCategory {
+    /// Natural scenery or outdoor landscape photo.
     Landscape,
+    /// Portrait or group photo with people.
     Person,
+    /// Photo of an inanimate object or product.
     Object,
+    /// Photo of an animal or pet.
     Animal,
+    /// Photo of a building or architectural structure.
     Architecture,
+    /// Photo of a document, screenshot, or text-heavy image.
     Document,
+    /// Any image that does not fit into the other categories.
     Other,
 }
 
@@ -30,7 +38,9 @@ impl FromStr for ImageCategory {
     }
 }
 
+/// ImageCategory utility methods.
 impl ImageCategory {
+    /// Returns the Chinese display name for this category variant.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Landscape => "风景",

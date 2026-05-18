@@ -1,7 +1,8 @@
-#![allow(missing_docs)]
+//! File hashing utilities using SHA-256.
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+/// Calculates the SHA-256 hash of a file at the given path. Returns the hash as a hex string.
 pub fn calculate_sha256(file_path: &Path) -> std::io::Result<String> {
     let content = std::fs::read(file_path)?;
     let mut hasher = Sha256::new();

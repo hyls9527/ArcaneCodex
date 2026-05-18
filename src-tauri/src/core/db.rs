@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Database connection pool management, migration system, and schema definitions.
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Result;
@@ -7,10 +7,13 @@ use std::sync::Arc;
 use tauri::Manager;
 use tracing::{info, warn};
 
+/// Type alias for the r2d2 connection pool managing SQLite connections.
 pub type SqlitePool = Pool<SqliteConnectionManager>;
+/// Type alias for a single checked-out connection from the r2d2 pool.
 pub type PooledConn = r2d2::PooledConnection<SqliteConnectionManager>;
 
 #[derive(Clone)]
+/// Manages the SQLite database connection pool and schema migrations. Thread-safe via Clone + Arc internally.
 pub struct Database {
     pub db_path: Arc<PathBuf>,
     pool: SqlitePool,
@@ -31,6 +34,7 @@ impl Database {
         Pool::new(manager).map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))
     }
 
+    /// Creates a new Database instance using the Tauri app handle to determine the data directory path. Creates the database file and runs all pending migrations.
     pub fn new(app_handle: &tauri::AppHandle) -> Result<Self> {
         let db_path = get_db_path(app_handle);
         info!("Database path: {:?}", db_path);
@@ -42,6 +46,7 @@ impl Database {
     }
 
     #[cfg(test)]
+        /// Creates a new Database instance from a specific file path. Test-only; uses #[cfg(test)].
     pub fn new_from_path(path: &str) -> Result<Self> {
         let db_path = PathBuf::from(path);
         let pool = Self::create_pool(&db_path)?;
@@ -51,6 +56,7 @@ impl Database {
         })
     }
 
+        /// Opens a new database connection from the connection pool. Returns a PooledConn that is automatically returned to the pool on drop.
     pub fn open_connection(&self) -> Result<PooledConn> {
         self.pool
             .get()
@@ -58,10 +64,12 @@ impl Database {
     }
 
     #[allow(dead_code)]
+        /// Initializes the database by running all pending migrations. Convenience wrapper around run_migrations.
     pub fn init(&self) -> Result<()> {
         self.run_migrations()
     }
 
+        /// Runs all pending database migrations sequentially from v1 to the latest version. Each migration is applied exactly once based on PRAGMA user_version tracking.
     pub fn run_migrations(&self) -> Result<()> {
         let conn = self.open_connection()?;
         info!("Running database migrations...");
@@ -122,6 +130,7 @@ impl Database {
         Ok(())
     }
 
+        /// Migration v1: Creates initial tables (images, tags, image_tags, search_index, task_queue, app_config) and inserts default configuration values.
     fn apply_v1_initial_schema(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch("
@@ -221,6 +230,7 @@ impl Database {
         Ok(())
     }
 
+        /// Migration v2: Adds ComfyUI image generation support columns (generation_source, generation_metadata, generation_workflow_id).
     fn apply_v2_comfyui_generation(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -238,6 +248,7 @@ impl Database {
         Ok(())
     }
 
+        /// Migration v3: Creates narratives, semantic_edges tables for the narrative anchor system.
     fn apply_v3_narrative_anchor(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch("
@@ -275,6 +286,7 @@ impl Database {
         Ok(())
     }
 
+        /// Migration v4: Adds ai_provider column, creates settings table, inserts inference provider configuration defaults.
     fn apply_v4_multi_provider(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -303,6 +315,7 @@ impl Database {
         Ok(())
     }
 
+        /// Migration v5: Adds ai_tag_status column, creates calibration_samples, calibration_reports, calibration_curves, tag_corrections, error_patterns tables.
     fn apply_v5_ai_tag_status(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch("
@@ -388,6 +401,7 @@ impl Database {
         Ok(())
     }
 
+        /// Migration v6: Migrates data from app_config to settings table, drops app_config table.
     fn apply_v6_unify_config(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -403,6 +417,7 @@ impl Database {
         Ok(())
     }
 
+        /// Migration v7: Creates xmp_sidecars table for XMP metadata sidecar file synchronization.
     fn apply_v7_xmp_sidecars(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -427,6 +442,7 @@ impl Database {
         Ok(())
     }
 
+        /// Migration v8: Creates kg_nodes, kg_edges, kg_communities tables for knowledge graph persistence.
     fn apply_v8_knowledge_graph(&self) -> Result<()> {
         let conn = self.open_connection()?;
         conn.execute_batch(
@@ -475,6 +491,7 @@ impl Database {
     }
 }
 
+/// Resolves the database file path from the Tauri app handle app data directory. Creates the directory if it does not exist.
 fn get_db_path(app_handle: &tauri::AppHandle) -> PathBuf {
     let app_data = app_handle
         .path()

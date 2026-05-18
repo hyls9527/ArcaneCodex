@@ -1,6 +1,7 @@
-#![allow(missing_docs)]
+//! BK-Tree data structure for efficient nearest-neighbor search using arbitrary distance functions. Used for perceptual hash (pHash) based near-duplicate image detection.
 use std::collections::HashMap;
 
+/// BK-Tree (Burkhard-Keller Tree) for efficient similarity search. Supports arbitrary distance functions for finding items within a specified distance threshold.
 pub struct BkTree<T> {
     root: Option<BkNode<T>>,
 }
@@ -18,10 +19,12 @@ struct BkNode<T> {
 }
 
 impl<T> BkTree<T> {
+        /// Creates an empty BK-Tree.
     pub fn new() -> Self {
         Self { root: None }
     }
 
+        /// Inserts an item into the tree with its associated index, using the provided distance function to determine placement. If an identical item already exists (distance 0), merges indices.
     pub fn insert<F>(&mut self, item: T, index: usize, distance_fn: F)
     where
         F: Fn(&T, &T) -> u32,
@@ -41,6 +44,7 @@ impl<T> BkTree<T> {
         }
     }
 
+        /// Searches the tree for items within the specified distance threshold from the query item. Returns a list of (distance, index) pairs sorted by insertion order.
     pub fn search<F>(&self, query: &T, threshold: u32, distance_fn: F) -> Vec<(u32, usize)>
     where
         F: Fn(&T, &T) -> u32,

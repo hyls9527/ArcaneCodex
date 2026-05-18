@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Unified application error types and sanitized error formatting. Central error handling layer for all crate modules.
 use regex::Regex;
 use serde::Serialize;
 use std::sync::OnceLock;
@@ -20,11 +20,13 @@ fn sql_regex() -> &'static Regex {
     })
 }
 
+/// Sanitizes an error message by replacing file paths with [PATH] and SQL queries with [QUERY] to prevent sensitive data leakage in logs and serialized output.
 pub fn sanitize_error(msg: &str) -> String {
     let result = path_regex().replace_all(msg, "[PATH]");
     sql_regex().replace_all(&result, "[QUERY]").to_string()
 }
 
+/// Unified application error type representing all failure modes in the application. Each variant carries an error code, human-readable message, and optional source error.
 #[derive(Error, Debug)]
 pub enum AppError {
     #[error("[{code}] Database error: {message}")]
@@ -61,7 +63,9 @@ pub enum AppError {
     Config { code: String, message: String },
 }
 
+/// AppError constructors for common error types. Each factory method assigns a unique error code.
 impl AppError {
+    /// Creates a Database error with code DB_001.
     pub fn database(source: rusqlite::Error) -> Self {
         AppError::Database {
             code: "DB_001".to_string(),
@@ -70,6 +74,7 @@ impl AppError {
         }
     }
 
+    /// Creates an I/O error with code IO_001.
     pub fn io(source: std::io::Error) -> Self {
         AppError::IoError {
             code: "IO_001".to_string(),
@@ -78,6 +83,7 @@ impl AppError {
         }
     }
 
+    /// Creates a ValidationError with code VAL_001.
     pub fn validation(message: impl Into<String>) -> Self {
         AppError::ValidationError {
             code: "VAL_001".to_string(),
@@ -85,6 +91,7 @@ impl AppError {
         }
     }
 
+    /// Creates an AI error with code AI_001.
     pub fn ai(message: impl Into<String>) -> Self {
         AppError::AI {
             code: "AI_001".to_string(),
@@ -92,6 +99,7 @@ impl AppError {
         }
     }
 
+    /// Creates an HTTP error with code HTTP_001.
     pub fn http(source: reqwest::Error) -> Self {
         AppError::Http {
             code: "HTTP_001".to_string(),
@@ -100,6 +108,7 @@ impl AppError {
         }
     }
 
+    /// Creates a Config error with code CFG_001.
     pub fn config(message: impl Into<String>) -> Self {
         AppError::Config {
             code: "CFG_001".to_string(),
@@ -108,6 +117,7 @@ impl AppError {
     }
 
     #[allow(dead_code)]
+    /// Creates a NotFound error with code NF_001.
     pub fn not_found(resource: impl Into<String>) -> Self {
         AppError::ValidationError {
             code: "NF_001".to_string(),
@@ -116,6 +126,7 @@ impl AppError {
     }
 
     #[allow(dead_code)]
+    /// Creates an Auth error with code AUTH_001.
     pub fn auth(message: impl Into<String>) -> Self {
         AppError::ValidationError {
             code: "AUTH_001".to_string(),
@@ -123,6 +134,7 @@ impl AppError {
         }
     }
 
+    /// Creates an Internal error with code INT_001.
     pub fn internal(message: impl Into<String>) -> Self {
         AppError::Config {
             code: "INT_001".to_string(),
@@ -130,6 +142,7 @@ impl AppError {
         }
     }
 
+    /// Returns the error code for this AppError variant (e.g., DB_001, IO_001).
     pub fn error_code(&self) -> &str {
         match self {
             AppError::Database { code, .. } => code,
@@ -142,32 +155,38 @@ impl AppError {
     }
 }
 
+/// Converts a rusqlite Error into AppError::Database.
 impl From<rusqlite::Error> for AppError {
     fn from(err: rusqlite::Error) -> Self {
         AppError::database(err)
     }
 }
 
+/// Converts a std::io Error into AppError::IoError.
 impl From<std::io::Error> for AppError {
     fn from(err: std::io::Error) -> Self {
         AppError::io(err)
     }
 }
 
+/// Converts a reqwest Error into AppError::Http.
 impl From<reqwest::Error> for AppError {
     fn from(err: reqwest::Error) -> Self {
         AppError::http(err)
     }
 }
 
+/// Convenience alias for Result<T, AppError>. Use as the return type for all fallible functions in the crate.
 pub type AppResult<T> = Result<T, AppError>;
 
+/// Internal structure for serializing AppError to JSON with code and sanitized message fields.
 #[derive(Serialize)]
 struct SerializedError {
     code: String,
     message: String,
 }
 
+/// Serializes AppError as a JSON object with code and sanitized message fields.
 impl Serialize for AppError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -181,6 +200,7 @@ impl Serialize for AppError {
     }
 }
 
+/// Initializes the global tracing subscriber with sanitized logging to file.
 pub fn init_logging() {
     crate::utils::log_sanitizer::init_sanitized_logging();
 }
