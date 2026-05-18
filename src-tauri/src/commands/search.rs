@@ -161,7 +161,6 @@ mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
 
-    #[allow(dead_code)]
     fn setup_test_db() -> (Arc<Database>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test_search_cmd.db");

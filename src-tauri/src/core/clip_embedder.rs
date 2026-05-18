@@ -17,7 +17,6 @@ pub struct ClipEmbedding {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct SimilarityResult {
     pub image_id: String,
     pub image_path: PathBuf,
@@ -103,7 +102,6 @@ impl ClipEmbedder {
         })
     }
 
-    #[allow(dead_code)]
     pub async fn batch_embed_images(
         &self,
         image_paths: &[&Path],
@@ -119,7 +117,6 @@ impl ClipEmbedder {
         results
     }
 
-    #[allow(dead_code)]
     pub async fn compute_similarity(
         &self,
         embedding_a: &[f32],

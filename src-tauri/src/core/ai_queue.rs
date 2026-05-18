@@ -39,7 +39,6 @@ pub struct QueueStatus {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum QueueCommand {
     Pause,
     Resume,
@@ -58,7 +57,6 @@ pub struct AIProgressEvent {
 pub struct AITaskQueue {
     sender: mpsc::Sender<AITask>,
     receiver: Arc<TokioMutex<Option<mpsc::Receiver<AITask>>>>,
-    #[allow(dead_code)]
     command_sender: mpsc::Sender<QueueCommand>,
     command_receiver: Arc<TokioMutex<Option<mpsc::Receiver<QueueCommand>>>>,
     is_running: Arc<AtomicBool>,
@@ -102,7 +100,6 @@ impl AITaskQueue {
         &self.db
     }
 
-    #[allow(dead_code)]
     pub fn set_concurrency(&mut self, concurrency: usize) {
         self.concurrency = concurrency.clamp(1, 10);
     }
@@ -207,7 +204,6 @@ impl AITaskQueue {
         stats
     }
 
-    #[allow(dead_code)]
     pub fn cancel(&self) {
         self.is_running.store(false, Ordering::SeqCst);
         self.is_paused.store(false, Ordering::SeqCst);

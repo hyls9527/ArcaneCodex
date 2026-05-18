@@ -887,7 +887,6 @@ mod tests {
     use crate::core::db::Database;
     use tempfile::TempDir;
 
-    #[allow(dead_code)]
     fn setup_test_db() -> (Database, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test_batch_ops.db");

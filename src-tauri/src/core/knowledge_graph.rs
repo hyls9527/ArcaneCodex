@@ -133,15 +133,12 @@ pub struct NeighborResult {
 
 pub struct KnowledgeGraphEngine {
     db: Arc<Database>,
-    #[allow(dead_code)]
     clip_embedder: Arc<ClipEmbedder>,
-    #[allow(dead_code)]
     vector_index: Arc<BruteForceVectorIndex>,
     nodes: NodeMap,
     edges: EdgeMap,
     adjacency: AdjacencyMap,
     communities: CommunityList,
-    #[allow(dead_code)]
     edge_thresholds: HashMap<EdgeType, f32>,
 }
 

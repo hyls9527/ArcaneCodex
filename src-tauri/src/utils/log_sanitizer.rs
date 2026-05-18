@@ -88,7 +88,6 @@ fn mask_value(value: &str) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub fn redact_api_key(key: &str) -> String {
     if key.is_empty() {
         return String::new();
@@ -96,7 +95,6 @@ pub fn redact_api_key(key: &str) -> String {
     mask_value(key)
 }
 
-#[allow(dead_code)]
 pub fn redact_path(path: &str) -> String {
     if path.is_empty() {
         return String::new();
@@ -108,7 +106,6 @@ pub fn redact_path(path: &str) -> String {
     path.to_string()
 }
 
-#[allow(dead_code)]
 pub fn redact_url(url: &str) -> String {
     if url.is_empty() {
         return String::new();
@@ -123,7 +120,6 @@ pub fn redact_url(url: &str) -> String {
     sanitized.to_string()
 }
 
-#[allow(dead_code)]
 pub struct SanitizedDisplay<T: fmt::Display>(pub T);
 
 impl<T: fmt::Display + std::fmt::Debug> fmt::Display for SanitizedDisplay<T> {

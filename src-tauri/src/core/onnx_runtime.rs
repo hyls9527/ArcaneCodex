@@ -33,7 +33,6 @@ impl ModelType {
         }
     }
 
-    #[allow(dead_code)]
     pub fn input_shape(&self) -> Vec<usize> {
         match self {
             ModelType::ImageClassification => vec![1, 3, 224, 224],
@@ -43,7 +42,6 @@ impl ModelType {
         }
     }
 
-    #[allow(dead_code)]
     pub fn output_dim(&self) -> usize {
         match self {
             ModelType::ImageClassification => 1000,
@@ -295,12 +293,10 @@ impl OnnxRuntimeManager {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn get_models_dir(&self) -> &Path {
         &self.models_dir
     }
 
-    #[allow(dead_code)]
     pub async fn list_available_models(&self) -> Vec<PathBuf> {
         let mut models = Vec::new();
 

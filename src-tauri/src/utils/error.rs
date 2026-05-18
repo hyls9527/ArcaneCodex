@@ -107,7 +107,6 @@ impl AppError {
         }
     }
 
-    #[allow(dead_code)]
     pub fn not_found(resource: impl Into<String>) -> Self {
         AppError::ValidationError {
             code: "NF_001".to_string(),
@@ -115,7 +114,6 @@ impl AppError {
         }
     }
 
-    #[allow(dead_code)]
     pub fn auth(message: impl Into<String>) -> Self {
         AppError::ValidationError {
             code: "AUTH_001".to_string(),

@@ -2,7 +2,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct Task {
     pub id: i64,
     pub image_id: i64,

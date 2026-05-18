@@ -52,7 +52,6 @@ pub enum FaceError {
     ImageProcessingFailed(String),
     InferenceFailed(String),
     NoFacesDetected,
-    #[allow(dead_code)]
     InvalidInput(String),
 }
 
@@ -213,7 +212,6 @@ impl FaceDetector {
         Ok(best_match)
     }
 
-    #[allow(dead_code)]
     pub async fn find_similar_faces(
         &self,
         query_embedding: &[f32],
@@ -252,7 +250,6 @@ impl FaceDetector {
         embeddings.len()
     }
 
-    #[allow(dead_code)]
     pub async fn unregister_face(&self, face_id: &str) -> bool {
         let mut embeddings = self.face_embeddings.write().await;
         embeddings.remove(face_id).is_some()

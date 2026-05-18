@@ -4,7 +4,7 @@
 
 ## Context
 
-All 9 phases are defined. Phases 1-8 are complete. Phase 9 is the current active phase (production readiness fixes) with remaining work broken out below.
+All 10 phases are defined. Phases 1-8 are complete. Phase 9 is the current active phase (production readiness fixes) with remaining work broken out below. Phase 11 (Dead Code and Structure Cleanup) is planned.
 
 ## Phases
 
@@ -18,6 +18,7 @@ All 9 phases are defined. Phases 1-8 are complete. Phase 9 is the current active
 - [x] **Phase 8: Production Features** - Batch operations, data visualization, settings management, performance
 - [ ] **Phase 9: Production Readiness** - CI automation, security hardening, caching, compilation verification
 - [ ] **Phase 10: Backend Optimization** - Fix critical bugs, N+1 queries, blocking calls, memory issues, and code quality
+- [ ] **Phase 11: Dead Code and Structure Cleanup** - Remove dead code, add docs, split monolithic files
 
 ## Phase Details
 
@@ -204,6 +205,24 @@ All 9 phases are defined. Phases 1-8 are complete. Phase 9 is the current active
 **Plans**: TBD
 **Status**: PLANNING
 
+### Phase 11: Dead Code and Structure Cleanup
+**Goal**: Codebase is leaner, large files are split into manageable modules, and public API surface is documented.
+**Depends on**: Phase 10
+**Requirements**: CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04, CLEAN-05
+**Success Criteria** (what must be TRUE):
+  1. All confirmed dead code removed -- zero `#[allow(dead_code)]` annotations in production code
+  2. Orphaned functions (init_database, try_open_database, is_encrypted) deleted
+  3. `cargo check` and `cargo clippy --lib -- -D warnings` pass
+  4. `#![allow(missing_docs)]` removed from all 42 Rust files, doc comments added to pub items
+  5. settings.rs split from 3231 lines into command handlers (~800 lines) + core/settings/{backup,config}
+  6. images.rs split from 3005 lines into commands/images/{import,export,query,delete}
+  7. All existing tests continue to pass
+**Plans**: 3 plans
+  - [ ] 03-01-PLAN.md -- Remove dead code (+ orphaned functions)
+  - [ ] 03-02-PLAN.md -- Remove #![allow(missing_docs)] + add doc comments
+  - [ ] 03-03-PLAN.md -- Split settings.rs + images.rs
+**Status**: PLANNED
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -218,3 +237,4 @@ All 9 phases are defined. Phases 1-8 are complete. Phase 9 is the current active
 | 8. Production Features | - | Complete | 2026-05 |
 | 9. Production Readiness | 5 remaining | In Progress | TBD |
 | 10. Backend Optimization | TBD | Planning | TBD |
+| 11. Dead Code and Structure Cleanup | 0/3 | PLANNED | TBD |

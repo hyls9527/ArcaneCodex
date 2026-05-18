@@ -95,7 +95,6 @@ fn get_keyring_master_key() -> Result<[u8; 32], String> {
 }
 
 /// 获取 v4 加密密钥：优先 OS 密钥环，回退到 PBKDF2 派生
-#[allow(dead_code)]
 fn get_encryption_key_v4() -> AppResult<[u8; 32]> {
     match get_keyring_master_key() {
         Ok(key) => {
@@ -267,7 +266,6 @@ pub fn decrypt_api_key(ciphertext: &str) -> AppResult<String> {
     }
 }
 
-#[allow(dead_code)]
 pub fn is_encrypted(value: &str) -> bool {
     value.starts_with(ENCRYPTION_PREFIX_V4)
         || value.starts_with(ENCRYPTION_PREFIX_V3)

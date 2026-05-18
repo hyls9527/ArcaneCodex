@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::core::onnx_runtime::{ModelType, OnnxRuntimeManager};
+use crate::utils::error::{AppError, AppResult};
 
 pub const IMAGENET_CLASSES: &[&str] = &[
     "tench",
@@ -1575,7 +1576,6 @@ impl ImageClassifier {
         })
     }
 
-    #[allow(dead_code)]
     pub async fn batch_classify(
         &self,
         image_paths: &[&std::path::Path],
@@ -1640,7 +1640,6 @@ impl ImageClassifier {
         all_predictions.into_iter().take(n).collect()
     }
 
-    #[allow(dead_code)]
     pub fn get_imagenet_classes() -> &'static [&'static str] {
         IMAGENET_CLASSES
     }

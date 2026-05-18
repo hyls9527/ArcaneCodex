@@ -57,7 +57,6 @@ impl Database {
             .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))
     }
 
-    #[allow(dead_code)]
     pub fn init(&self) -> Result<()> {
         self.run_migrations()
     }
@@ -487,7 +486,6 @@ fn get_db_path(app_handle: &tauri::AppHandle) -> PathBuf {
     app_data.join("arcanecodex.db")
 }
 
-#[allow(dead_code)]
 pub fn init_database(app_handle: &tauri::AppHandle) -> Result<()> {
     let db_path = get_db_path(app_handle);
     info!("Database path: {:?}", db_path);
@@ -531,7 +529,6 @@ pub fn init_database(app_handle: &tauri::AppHandle) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
 fn try_open_database(db_path: &PathBuf) -> Result<()> {
     let conn = Connection::open(db_path)?;
 

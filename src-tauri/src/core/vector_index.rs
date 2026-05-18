@@ -31,20 +31,15 @@ pub struct IndexStats {
 
 #[derive(Debug)]
 pub enum VectorIndexError {
-    #[allow(dead_code)]
     IndexNotInitialized,
     DimensionMismatch {
         expected: usize,
         got: usize,
     },
     EmptyVector,
-    #[allow(dead_code)]
     InsertFailed(String),
-    #[allow(dead_code)]
     SearchFailed(String),
-    #[allow(dead_code)]
     SerializationError(String),
-    #[allow(dead_code)]
     DeserializationError(String),
     Io(std::io::Error),
 }
@@ -83,7 +78,6 @@ pub type VectorResult<T> = std::result::Result<T, VectorIndexError>;
 pub struct BruteForceVectorIndex {
     dimension: usize,
     entries: Arc<tokio::sync::RwLock<HashMap<String, VectorEntry>>>,
-    #[allow(dead_code)]
     index_dir: PathBuf,
 }
 
@@ -119,7 +113,6 @@ impl BruteForceVectorIndex {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub async fn batch_insert(&self, entries: Vec<VectorEntry>) -> VectorResult<(usize, usize)> {
         let mut success_count = 0;
         let mut fail_count = 0;
@@ -183,30 +176,25 @@ impl BruteForceVectorIndex {
         entries.remove(id).is_some()
     }
 
-    #[allow(dead_code)]
     pub async fn get(&self, id: &str) -> Option<VectorEntry> {
         let entries = self.entries.read().await;
         entries.get(id).cloned()
     }
 
-    #[allow(dead_code)]
     pub async fn contains(&self, id: &str) -> bool {
         let entries = self.entries.read().await;
         entries.contains_key(id)
     }
 
-    #[allow(dead_code)]
     pub async fn count(&self) -> usize {
         let entries = self.entries.read().await;
         entries.len()
     }
 
-    #[allow(dead_code)]
     pub fn get_dimension(&self) -> usize {
         self.dimension
     }
 
-    #[allow(dead_code)]
     pub async fn clear(&self) -> VectorResult<()> {
         let mut entries = self.entries.write().await;
         entries.clear();
@@ -233,7 +221,6 @@ impl BruteForceVectorIndex {
         }
     }
 
-    #[allow(dead_code)]
     pub async fn save_to_file(&self, filename: &str) -> VectorResult<PathBuf> {
         let entries = self.entries.read().await;
 
@@ -262,7 +249,6 @@ impl BruteForceVectorIndex {
         Ok(file_path)
     }
 
-    #[allow(dead_code)]
     pub async fn load_from_file(&self, filename: &str) -> VectorResult<usize> {
         let file_path = self.index_dir.join(filename);
 
