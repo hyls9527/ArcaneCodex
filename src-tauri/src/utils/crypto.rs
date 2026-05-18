@@ -7,11 +7,12 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use pbkdf2::pbkdf2_hmac;
 use sha2::{Digest, Sha256};
 use crate::utils::error::{AppError, AppResult};
-use tracing::warn;
+use tracing::{info, warn};
 
 const ENCRYPTION_PREFIX_V1: &str = "enc:v1:";
 const ENCRYPTION_PREFIX_V2: &str = "enc:v2:";
 const ENCRYPTION_PREFIX_V3: &str = "enc:v3:";
+const ENCRYPTION_PREFIX_V4: &str = "enc:v4:";
 
 /// PBKDF2 迭代次数，遵循 OWASP 2023 推荐
 const PBKDF2_ITERATIONS: u32 = 600_000;
@@ -54,6 +55,68 @@ fn derive_key_v3(salt: &[u8]) -> [u8; 32] {
 /// 生成加密安全的随机 salt
 fn generate_salt() -> [u8; SALT_LEN] {
     rand::random()
+}
+
+/// 从操作系统密钥环获取或创建 32 字节主密钥
+fn get_keyring_master_key() -> Result<[u8; 32], String> {
+    let entry = keyring::Entry::new("arcane-codex", "encryption-master-key")
+        .map_err(|e| format!("failed to create keyring entry: {}", e))?;
+
+    match entry.get_password() {
+        Ok(password) => {
+            let decoded = BASE64.decode(password.as_bytes())
+                .map_err(|e| format!("failed to decode keyring master key: {}", e))?;
+            if decoded.len() != 32 {
+                return Err(format!(
+                    "keyring master key has unexpected length: {}",
+                    decoded.len()
+                ));
+            }
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&decoded);
+            info!("Retrieved encryption master key from OS keyring");
+            Ok(key)
+        }
+        Err(keyring::Error::NoEntry) => {
+            // Key doesn't exist yet — generate a new 32-byte master key and store it
+            let key: [u8; 32] = rand::random();
+            let encoded = BASE64.encode(key);
+            entry
+                .set_password(&encoded)
+                .map_err(|e| format!("failed to store master key in keyring: {}", e))?;
+            info!("Generated and stored new encryption master key in OS keyring");
+            Ok(key)
+        }
+        Err(e) => {
+            // Keyring unavailable (headless/CI, or platform not supported)
+            Err(format!("keyring unavailable: {}", e))
+        }
+    }
+}
+
+/// 获取 v4 加密密钥：优先 OS 密钥环，回退到 PBKDF2 派生
+fn get_encryption_key_v4() -> AppResult<[u8; 32]> {
+    match get_keyring_master_key() {
+        Ok(key) => {
+            info!("Using OS keyring encryption key (v4)");
+            Ok(key)
+        }
+        Err(e) => {
+            warn!("Keyring unavailable, using PBKDF2 fallback: {}", e);
+            let machine_id = format!(
+                "{}:{}:{:?}:{:?}",
+                whoami::fallible::hostname().unwrap_or_default(),
+                whoami::fallible::username().unwrap_or_default(),
+                whoami::platform(),
+                whoami::arch(),
+            );
+            let salt: [u8; 16] = rand::random();
+            let mut key = [0u8; 32];
+            pbkdf2_hmac::<Sha256>(machine_id.as_bytes(), &salt, PBKDF2_ITERATIONS, &mut key);
+            info!("Using PBKDF2 fallback for encryption key derivation (v4)");
+            Ok(key)
+        }
+    }
 }
 
 pub fn encrypt_api_key(plaintext: &str) -> AppResult<String> {
