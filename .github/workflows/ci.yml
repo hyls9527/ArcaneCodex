@@ -46,6 +46,9 @@ jobs:
         run: |
           set -o pipefail
           cargo clippy --lib -- -D warnings 2>&1 | tee ../clippy-output.txt
+      - name: Cargo test
+        working-directory: src-tauri
+        run: cargo test
       - name: Upload Clippy Output
         if: always()
         uses: actions/upload-artifact@v4
