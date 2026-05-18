@@ -70,7 +70,7 @@ pub fn sanitize_log_message(msg: &str) -> String {
 
     result = url_sensitive_params()
         .replace_all(&result, |caps: &regex::Captures| {
-            let full_match = caps.get(0).unwrap().as_str();
+            let full_match = caps.get(0).map(|m| m.as_str()).unwrap_or("");
             let param_name_end = full_match.find('=').unwrap_or(full_match.len());
             format!("{}=[REDACTED]", &full_match[..param_name_end])
         })
@@ -115,7 +115,7 @@ pub fn redact_url(url: &str) -> String {
     }
 
     let sanitized = url_sensitive_params().replace_all(url, |caps: &regex::Captures| {
-        let full_match = caps.get(0).unwrap().as_str();
+        let full_match = caps.get(0).map(|m| m.as_str()).unwrap_or("");
         let param_name_end = full_match.find('=').unwrap_or(full_match.len());
         format!("{}=[REDACTED]", &full_match[..param_name_end])
     });
@@ -163,12 +163,18 @@ pub fn init_sanitized_logging() {
         Ok(_) => {
             let log_path = log_file.clone();
             let layer = fmt::layer()
-                .with_writer(move || {
-                    std::fs::OpenOptions::new()
+                .with_writer(move || -> Box<dyn std::io::Write> {
+                    match std::fs::OpenOptions::new()
                         .create(true)
                         .append(true)
                         .open(&log_path)
-                        .expect("无法打开日志文件")
+                    {
+                        Ok(file) => Box::new(file),
+                        Err(e) => {
+                            eprintln!("Failed to open log file: {}", e);
+                            Box::new(std::io::stdout())
+                        }
+                    }
                 })
                 .with_ansi(false)
                 .event_format(SanitizedEventFormatter);
