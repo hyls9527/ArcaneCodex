@@ -1,15 +1,28 @@
 #![allow(missing_docs)]
 use regex::Regex;
 use serde::Serialize;
+use std::sync::OnceLock;
 use thiserror::Error;
 
-pub fn sanitize_error(msg: &str) -> String {
-    let path_re = Regex::new(r"(?i)(?:[A-Za-z]:\\|/)(?:[^\s:\\/]+[\\/])+[^\s:\\/]*").unwrap();
-    let sql_re =
+fn path_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)(?:[A-Za-z]:\\|/)(?:[^\s:\\/]+[\\/])+[^\s:\\/]*")
+            .expect("BUG: invalid path regex pattern")
+    })
+}
+
+fn sql_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
         Regex::new(r"(?i)\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA)\b.+?(?:;|$)")
-            .unwrap();
-    let result = path_re.replace_all(msg, "[PATH]");
-    sql_re.replace_all(&result, "[QUERY]").to_string()
+            .expect("BUG: invalid SQL regex pattern")
+    })
+}
+
+pub fn sanitize_error(msg: &str) -> String {
+    let result = path_regex().replace_all(msg, "[PATH]");
+    sql_regex().replace_all(&result, "[QUERY]").to_string()
 }
 
 #[derive(Error, Debug)]
