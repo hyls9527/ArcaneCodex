@@ -241,12 +241,6 @@ pub fn decrypt_api_key(ciphertext: &str) -> AppResult<String> {
     }
 }
 
-pub fn is_encrypted(value: &str) -> bool {
-    value.starts_with(ENCRYPTION_PREFIX_V4)
-        || value.starts_with(ENCRYPTION_PREFIX_V3)
-        || value.starts_with(ENCRYPTION_PREFIX_V2)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,16 +280,6 @@ mod tests {
         let tampered = encrypted.replace(ENCRYPTION_PREFIX_V4, "enc:v4:invalidbase64!!!");
         let decrypted = decrypt_api_key(&tampered).unwrap();
         assert_eq!(decrypted, "", "密钥变更或密文损坏时应返回空字符串");
-    }
-
-    #[test]
-    fn test_is_encrypted() {
-        assert!(is_encrypted("enc:v4:somebase64data"));
-        assert!(is_encrypted("enc:v3:somebase64data"));
-        assert!(is_encrypted("enc:v2:somebase64data"));
-        assert!(!is_encrypted("enc:v1:somebase64data")); // v1 已废弃
-        assert!(!is_encrypted("plain-api-key"));
-        assert!(!is_encrypted(""));
     }
 
     #[test]

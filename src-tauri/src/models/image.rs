@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Image {
     pub id: i64,
     pub file_path: String,
@@ -34,6 +35,7 @@ pub struct Image {
 }
 
 impl Image {
+    #[allow(dead_code)]
     pub fn from_row(row: &rusqlite::Row<'_>) -> Result<Self, rusqlite::Error> {
         Ok(Self {
             id: row.get(0)?,

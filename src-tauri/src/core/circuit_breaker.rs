@@ -112,6 +112,7 @@ impl CircuitBreaker {
         }
     }
 
+    #[allow(dead_code)]
     pub fn failure_count(&self) -> u64 {
         self.failure_count.load(Ordering::SeqCst)
     }

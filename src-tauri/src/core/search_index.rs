@@ -152,6 +152,7 @@ impl SearchIndexBuilder {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn delete_for_image(&self, db: &Database, image_id: i64) -> AppResult<()> {
         let conn = db.open_connection()?;
 

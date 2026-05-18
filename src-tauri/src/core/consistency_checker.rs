@@ -105,6 +105,7 @@ impl ConsistencyChecker {
         all_conflicts
     }
 
+    #[allow(dead_code)]
     pub fn has_conflicts(conflicts: &[String]) -> bool {
         !conflicts.is_empty()
     }

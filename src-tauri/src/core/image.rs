@@ -50,6 +50,7 @@ impl ImageProcessor {
         Ok(hex::encode(hash_bytes))
     }
 
+    #[allow(dead_code)]
     pub fn hamming_distance(hash1: &str, hash2: &str) -> AppResult<u32> {
         let bytes1 = hex::decode(hash1)
             .map_err(|e| AppError::validation(format!("解析 hash1 失败: {:?}", e)))?;

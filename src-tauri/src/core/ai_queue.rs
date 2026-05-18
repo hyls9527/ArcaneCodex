@@ -39,6 +39,7 @@ pub struct QueueStatus {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum QueueCommand {
     Pause,
     Resume,
@@ -201,6 +202,7 @@ impl AITaskQueue {
         stats
     }
 
+    #[allow(dead_code)]
     pub fn cancel(&self) {
         self.is_running.store(false, Ordering::SeqCst);
         self.is_paused.store(false, Ordering::SeqCst);

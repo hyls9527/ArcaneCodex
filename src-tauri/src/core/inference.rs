@@ -50,6 +50,7 @@ impl Default for ProviderConfig {
 #[async_trait]
 pub trait InferenceProvider: Send + Sync {
     fn name(&self) -> &str;
+    #[allow(dead_code)]
     fn model(&self) -> &str;
     async fn analyze_image(&self, image_path: &str) -> AppResult<AIResult>;
     async fn health_check(&self) -> AppResult<Vec<String>>;
@@ -106,6 +107,7 @@ impl InferenceProvider for OpenAICompatibleAdapter {
         &self.1
     }
 
+    #[allow(dead_code)]
     fn model(&self) -> &str {
         &self.0.config.model
     }
@@ -171,6 +173,7 @@ impl InferenceProvider for OpenAIClient {
             _ => "unknown",
         }
     }
+    #[allow(dead_code)]
     fn model(&self) -> &str {
         &self.model
     }

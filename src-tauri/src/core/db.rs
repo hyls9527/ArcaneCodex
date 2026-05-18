@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{Connection, Result};
+use rusqlite::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
@@ -57,6 +57,7 @@ impl Database {
             .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))
     }
 
+    #[allow(dead_code)]
     pub fn init(&self) -> Result<()> {
         self.run_migrations()
     }
@@ -486,63 +487,6 @@ fn get_db_path(app_handle: &tauri::AppHandle) -> PathBuf {
     app_data.join("arcanecodex.db")
 }
 
-pub fn init_database(app_handle: &tauri::AppHandle) -> Result<()> {
-    let db_path = get_db_path(app_handle);
-    info!("Database path: {:?}", db_path);
-
-    match try_open_database(&db_path) {
-        Ok(_) => {
-            let db = Database::new(app_handle)?;
-            db.run_migrations()?;
-            info!("Database initialized successfully");
-        }
-        Err(e) => {
-            warn!("Database corrupted or invalid: {}", e);
-            warn!("Attempting to recover by renaming corrupted database...");
-
-            let backup_path = db_path.with_extension("db.corrupted");
-            if db_path.exists() {
-                std::fs::rename(&db_path, &backup_path).map_err(|rename_err| {
-                    rusqlite::Error::InvalidParameterName(format!(
-                        "无法重命名损坏的数据库文件: {}",
-                        rename_err
-                    ))
-                })?;
-                info!("Corrupted database renamed to: {:?}", backup_path);
-            }
-
-            let wal_path = db_path.with_extension("db-wal");
-            if wal_path.exists() {
-                let _ = std::fs::rename(&wal_path, backup_path.with_extension("db-wal.corrupted"));
-            }
-            let shm_path = db_path.with_extension("db-shm");
-            if shm_path.exists() {
-                let _ = std::fs::rename(&shm_path, backup_path.with_extension("db-shm.corrupted"));
-            }
-
-            let db = Database::new(app_handle)?;
-            db.run_migrations()?;
-            info!("Fresh database initialized after corruption recovery");
-        }
-    }
-
-    Ok(())
-}
-
-fn try_open_database(db_path: &PathBuf) -> Result<()> {
-    let conn = Connection::open(db_path)?;
-
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA integrity_check;")?;
-
-    match conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0)) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            warn!("Cannot read user_version: {}", e);
-            Err(e)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -683,29 +627,6 @@ mod tests {
 
         handle1.join().unwrap();
         handle2.join().unwrap();
-    }
-
-    #[test]
-    fn test_corrupted_database_recovery() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test_corrupt.db");
-
-        std::fs::write(&db_path, [0u8; 1024]).unwrap();
-
-        let result = try_open_database(&db_path);
-        assert!(result.is_err(), "Corrupted database should fail to open");
-
-        if let Err(e) = std::fs::remove_file(&db_path) {
-            warn!("清理测试数据库失败: {}", e);
-        }
-        let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
-        db.run_migrations().unwrap();
-
-        let conn = db.open_connection().unwrap();
-        let timeout: i64 = conn
-            .pragma_query_value(None, "busy_timeout", |row| row.get(0))
-            .unwrap();
-        assert_eq!(timeout, 5000);
     }
 
     #[test]
