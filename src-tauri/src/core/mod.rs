@@ -17,5 +17,6 @@ pub mod knowledge_graph;
 pub mod lm_studio;
 pub mod onnx_runtime;
 pub mod search_index;
+pub mod settings;
 pub mod vector_index;
 pub mod xmp_service;
