@@ -58,7 +58,7 @@ export function ImageViewer({
   })
 
   useEffect(() => {
-    getNarratives(image.id).then(setNarratives).catch(() => setNarratives([]))
+    getNarratives(image.id).then(setNarratives).catch((err) => { console.warn('[ImageViewer] 加载叙事锚点失败:', err); setNarratives([]) })
   }, [image.id])
 
   const handleWriteNarrative = async (imageId: number, content: string) => {

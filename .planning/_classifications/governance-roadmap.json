@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/governance-roadmap.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "ArcaneCodex 项目治理路线图",
+  "summary": "分阶段项目治理路线图涵盖紧急修复、短期治理、中期加固和长期规划",
+  "scope": ["Rust后端", "React前端", "CI/CD", "安全配置", "密码学", "数据库", "组件拆分"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

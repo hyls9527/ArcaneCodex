@@ -18,7 +18,7 @@ use crate::core::file_watcher::FileWatcherService;
 use crate::core::image_classifier::ImageClassifier;
 use crate::core::knowledge_graph::KnowledgeGraphEngine;
 use crate::core::onnx_runtime::OnnxRuntimeManager;
-use crate::core::vector_index::HnswVectorIndex;
+use crate::core::vector_index::BruteForceVectorIndex;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -158,7 +158,9 @@ fn main() {
                 .join("models");
 
             if !models_dir.exists() {
-                std::fs::create_dir_all(&models_dir).ok();
+                if let Err(e) = std::fs::create_dir_all(&models_dir) {
+                    tracing::warn!("创建 models 目录失败: {}", e);
+                }
             }
 
             let vector_index_dir = app
@@ -168,14 +170,16 @@ fn main() {
                 .join("vector_index");
 
             if !vector_index_dir.exists() {
-                std::fs::create_dir_all(&vector_index_dir).ok();
+                if let Err(e) = std::fs::create_dir_all(&vector_index_dir) {
+                    tracing::warn!("创建 vector_index 目录失败: {}", e);
+                }
             }
 
             let onnx_manager = Arc::new(OnnxRuntimeManager::new(&models_dir));
             let classifier = Arc::new(ImageClassifier::new(onnx_manager.clone()));
             let face_detector = Arc::new(FaceDetector::new(onnx_manager.clone()));
             let clip_embedder = Arc::new(ClipEmbedder::new(onnx_manager.clone()));
-            let vector_index = Arc::new(HnswVectorIndex::new(512, &vector_index_dir));
+            let vector_index = Arc::new(BruteForceVectorIndex::new(512, &vector_index_dir));
 
             app.manage(commands::ai_core::AppState {
                 onnx_manager,

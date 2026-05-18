@@ -281,15 +281,13 @@ impl DeduplicationScanner {
 }
 
 fn phash_to_u64(phash: &str) -> AppResult<u64> {
-    let bytes = hex::decode(phash)
-        .map_err(|e| AppError::validation(format!("解析 phash 失败: {:?}", e)))?;
-
-    let mut result: u64 = 0;
-    for &byte in &bytes {
-        result = (result << 8) | byte as u64;
-    }
-
-    Ok(result)
+    let hex_str = if phash.len() > 16 {
+        &phash[..16]
+    } else {
+        phash
+    };
+    u64::from_str_radix(hex_str, 16)
+        .map_err(|e| AppError::validation(format!("解析 phash 失败: {:?}", e)))
 }
 
 #[cfg(test)]

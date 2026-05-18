@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::clip_embedder::ClipEmbedder;
 use crate::core::db::Database;
-use crate::core::vector_index::HnswVectorIndex;
+use crate::core::vector_index::{cosine_similarity, BruteForceVectorIndex};
 
 type AdjacencyMap = Arc<tokio::sync::RwLock<HashMap<String, HashSet<(String, String)>>>>;
 type NodeMap = Arc<tokio::sync::RwLock<HashMap<String, GraphNode>>>;
 type EdgeMap = Arc<tokio::sync::RwLock<HashMap<String, GraphEdge>>>;
-type CommunityList = Arc<tokio::sync::RwLock<Vec<GraphCommunity>>>;
+type CommunityList = Arc<tokio::sync::RwLock<Vec<GraphComponent>>>;
 type ImageDataRow = (
     i64,
     String,
@@ -96,7 +96,7 @@ pub struct GraphEdge {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GraphCommunity {
+pub struct GraphComponent {
     pub id: u32,
     pub size: usize,
     pub central_node_id: Option<String>,
@@ -136,7 +136,7 @@ pub struct KnowledgeGraphEngine {
     #[allow(dead_code)]
     clip_embedder: Arc<ClipEmbedder>,
     #[allow(dead_code)]
-    vector_index: Arc<HnswVectorIndex>,
+    vector_index: Arc<BruteForceVectorIndex>,
     nodes: NodeMap,
     edges: EdgeMap,
     adjacency: AdjacencyMap,
@@ -149,7 +149,7 @@ impl KnowledgeGraphEngine {
     pub fn new(
         db: Arc<Database>,
         clip_embedder: Arc<ClipEmbedder>,
-        vector_index: Arc<HnswVectorIndex>,
+        vector_index: Arc<BruteForceVectorIndex>,
     ) -> Self {
         let mut thresholds = HashMap::new();
         thresholds.insert(EdgeType::SemanticSimilarity, 0.7);
@@ -248,7 +248,7 @@ impl KnowledgeGraphEngine {
         self.discover_semantic_edges(EdgeType::SemanticSimilarity, 0.7)
             .await?;
         self.discover_tag_edges().await?;
-        self.detect_communities().await?;
+        self.find_connected_components().await?;
         self.update_degrees().await;
 
         if let Err(e) = self.save_to_db().await {
@@ -369,7 +369,7 @@ impl KnowledgeGraphEngine {
                     let emb_b = self.get_node_embedding(id_b).await;
 
                     if let (Some(a), Some(b)) = (emb_a, emb_b) {
-                        let similarity = Self::cosine_similarity(&a, &b);
+                        let similarity = cosine_similarity(&a, &b);
                         if similarity >= threshold {
                             let edge = GraphEdge {
                                 id: format!("{}-{}-{}", id_a, id_b, edge_type.as_str()),
@@ -489,7 +489,7 @@ impl KnowledgeGraphEngine {
         Ok(added)
     }
 
-    pub async fn detect_communities(&self) -> Result<u32, String> {
+    pub async fn find_connected_components(&self) -> Result<u32, String> {
         let adjacency = self.adjacency.read().await;
         let nodes = self.nodes.read().await;
 
@@ -577,7 +577,7 @@ impl KnowledgeGraphEngine {
                 }
             }
 
-            communities_output.push(GraphCommunity {
+            communities_output.push(GraphComponent {
                 id: community_id_u32,
                 size,
                 central_node_id: central_node,
@@ -816,7 +816,7 @@ impl KnowledgeGraphEngine {
         edges.values().cloned().collect()
     }
 
-    pub async fn get_communities(&self) -> Vec<GraphCommunity> {
+    pub async fn get_communities(&self) -> Vec<GraphComponent> {
         let communities = self.communities.read().await;
         communities.clone()
     }
@@ -1074,7 +1074,7 @@ impl KnowledgeGraphEngine {
                 let central: Option<String> = row.get(2)?;
                 let density: f64 = row.get(4)?;
 
-                Ok(GraphCommunity {
+                Ok(GraphComponent {
                     id: row.get::<_, i64>(0)? as u32,
                     size: row.get::<_, i64>(1)? as usize,
                     central_node_id: central.filter(|s| !s.is_empty()),
@@ -1100,19 +1100,4 @@ impl KnowledgeGraphEngine {
         Ok(node_count + edge_count + comm_count)
     }
 
-    fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        if a.is_empty() || b.is_empty() || a.len() != b.len() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a == 0.0 || norm_b == 0.0 {
-            return 0.0;
-        }
-
-        dot_product / (norm_a * norm_b)
-    }
 }

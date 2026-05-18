@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+use tracing::warn;
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -45,7 +46,9 @@ impl FileWatcherService {
                                 .unwrap_or_default()
                                 .as_secs(),
                         };
-                        let _ = tx_clone.send(change_event);
+                        if let Err(e) = tx_clone.send(change_event) {
+                            warn!("发送文件变更事件失败: {}", e);
+                        }
                     }
                 }
             },
@@ -84,7 +87,9 @@ impl FileWatcherService {
                 .map(|mut set| set.drain().collect())
                 .unwrap_or_default();
             for path in &paths {
-                let _ = w.unwatch(path);
+                if let Err(e) = w.unwatch(path) {
+                    warn!("取消监控路径失败: {}", e);
+                }
             }
         }
     }

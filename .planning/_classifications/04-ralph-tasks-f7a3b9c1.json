@@ -1,0 +1,18 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/v1.0.0-rc/04-ralph-tasks.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "开发任务清单 (Development Tasks)",
+  "summary": "Tracks development task completion across 10 phases for ArcaneCodex v1.0.0-rc",
+  "scope": ["ArcaneCodex", "Tauri 2.x", "React 18", "Rust", "SQLite", "LM Studio", "image management", "AI processing", "semantic search", "deduplication", "i18n", "narrative anchor", "multi-inference"],
+  "cross_refs": [
+    "RALPH_STATE.md",
+    "05-test-plan.md",
+    "CHANGELOG.md",
+    "README.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

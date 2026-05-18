@@ -1631,6 +1631,8 @@ impl ImageClassifier {
         }
 
         all_predictions.sort_by(|a, b| {
+            // SAFE-05: NaN guard — neural network outputs should not contain NaN,
+            // but isolate to prevent cascade if model produces invalid values
             b.confidence
                 .partial_cmp(&a.confidence)
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -1641,5 +1643,29 @@ impl ImageClassifier {
     #[allow(dead_code)]
     pub fn get_imagenet_classes() -> &'static [&'static str] {
         IMAGENET_CLASSES
+    }
+
+    /// SAFE-05: Error boundary for classify_image. Catches errors from image processing
+    /// or ONNX runtime, logs them with full context, and returns a typed AppError.
+    /// Prevents one corrupt image from crashing the entire classification pipeline.
+    pub async fn classify_image_safe(
+        &self,
+        image_path: &std::path::Path,
+        top_n: usize,
+    ) -> AppResult<ImageClassificationResult> {
+        match self.classify_image(image_path, top_n).await {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                tracing::error!(
+                    "图像分类失败 (path: {}): {}",
+                    image_path.display(),
+                    e
+                );
+                Err(AppError::AI {
+                    code: "AI_002".to_string(),
+                    message: format!("图像分类失败: {}", e),
+                })
+            }
+        }
     }
 }

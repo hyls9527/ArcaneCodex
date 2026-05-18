@@ -78,14 +78,16 @@ impl From<std::io::Error> for VectorIndexError {
 
 pub type VectorResult<T> = std::result::Result<T, VectorIndexError>;
 
-pub struct HnswVectorIndex {
+/// Brute-force vector index using HashMap + O(n) linear scan.
+/// For large datasets (>10k vectors), replace with HNSW for logarithmic search.
+pub struct BruteForceVectorIndex {
     dimension: usize,
     entries: Arc<tokio::sync::RwLock<HashMap<String, VectorEntry>>>,
     #[allow(dead_code)]
     index_dir: PathBuf,
 }
 
-impl HnswVectorIndex {
+impl BruteForceVectorIndex {
     pub fn new(dimension: usize, index_dir: &Path) -> Self {
         tracing::info!(
             dimension = dimension,
@@ -154,7 +156,7 @@ impl HnswVectorIndex {
         let mut results: Vec<SearchResult> = Vec::new();
 
         for (id, entry) in entries.iter() {
-            let similarity = Self::cosine_similarity(query, &entry.embedding);
+            let similarity = cosine_similarity(query, &entry.embedding);
 
             if similarity >= min_similarity {
                 results.push(SearchResult {
@@ -292,20 +294,20 @@ impl HnswVectorIndex {
 
         Ok(count)
     }
+}
 
-    fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        if a.is_empty() || b.is_empty() || a.len() != b.len() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a == 0.0 || norm_b == 0.0 {
-            return 0.0;
-        }
-
-        dot_product / (norm_a * norm_b)
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.is_empty() || b.is_empty() || a.len() != b.len() {
+        return 0.0;
     }
+
+    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+
+    dot_product / (norm_a * norm_b)
 }

@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/v1.0.0-rc/02-architecture.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "系统架构设计 (System Architecture)",
+  "summary": "Technical specification for ArcaneCodex system architecture including data models, API definitions, and process flows.",
+  "scope": ["Tauri 2.x", "React 18", "SQLite", "LM Studio", "Rust backend", "image processing", "semantic search", "task queue"],
+  "cross_refs": ["docs/planning/v1.0.0-rc/01-requirements.md", "docs/planning/v1.0.0-rc/04-ralph-tasks.md", "docs/planning/v1.0.0-rc/05-test-plan.md", "docs/planning/v1.0.0-rc/06-learnings.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

@@ -7,6 +7,7 @@ use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 
 use crate::core::onnx_runtime::{ModelType, OnnxRuntimeManager};
+use crate::core::vector_index::cosine_similarity;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FaceDetection {
@@ -195,7 +196,7 @@ impl FaceDetector {
 
         for (face_id, stored_embedding) in embeddings.iter() {
             let similarity =
-                Self::cosine_similarity(&query_embedding.embedding, &stored_embedding.embedding);
+                cosine_similarity(&query_embedding.embedding, &stored_embedding.embedding);
 
             if similarity > best_similarity && similarity >= threshold {
                 best_similarity = similarity;
@@ -224,7 +225,7 @@ impl FaceDetector {
         let mut matches: Vec<FaceMatch> = Vec::new();
 
         for (face_id, stored_embedding) in embeddings.iter() {
-            let similarity = Self::cosine_similarity(query_embedding, &stored_embedding.embedding);
+            let similarity = cosine_similarity(query_embedding, &stored_embedding.embedding);
 
             if similarity >= min_similarity {
                 matches.push(FaceMatch {
@@ -357,19 +358,4 @@ impl FaceDetector {
         Err(FaceError::InferenceFailed("无法提取嵌入向量".to_string()))
     }
 
-    fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        if a.is_empty() || b.is_empty() || a.len() != b.len() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a == 0.0 || norm_b == 0.0 {
-            return 0.0;
-        }
-
-        dot_product / (norm_a * norm_b)
-    }
 }

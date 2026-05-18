@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/pre-requirements.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "本地图片知识库 - 需求预分析文档",
+  "summary": "Pre-requirements analysis for a local AI-driven image knowledge base with smart classification and search.",
+  "scope": ["ArcaneGallery", "image knowledge base", "AI image recognition", "metadata management", "search engine", "photo management"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

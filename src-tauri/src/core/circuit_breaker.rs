@@ -1,10 +1,19 @@
 #![allow(missing_docs)]
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use std::sync::OnceLock;
 use std::time::Instant;
 
 const CLOSED: u8 = 0;
 const OPEN: u8 = 1;
 const HALF_OPEN: u8 = 2;
+
+/// Process start time — reference point for monotonic millisecond timestamps.
+static PROCESS_START: OnceLock<Instant> = OnceLock::new();
+
+fn monotonic_ms() -> u64 {
+    let start = PROCESS_START.get_or_init(Instant::now);
+    start.elapsed().as_millis() as u64
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
@@ -43,7 +52,7 @@ impl CircuitBreaker {
             CircuitState::Closed => true,
             CircuitState::Open => {
                 let last = self.last_failure_ms.load(Ordering::SeqCst);
-                let now = Instant::now().elapsed().as_millis() as u64;
+                let now = monotonic_ms();
                 if now.saturating_sub(last) >= self.reset_timeout_ms {
                     let prev = self.half_open_permits.fetch_sub(1, Ordering::SeqCst);
                     if prev > 0 {
@@ -86,7 +95,7 @@ impl CircuitBreaker {
     pub fn record_failure(&self) {
         let count = self.failure_count.fetch_add(1, Ordering::SeqCst) + 1;
         self.last_failure_ms.store(
-            Instant::now().elapsed().as_millis() as u64,
+            monotonic_ms(),
             Ordering::SeqCst,
         );
         if count >= self.failure_threshold {
@@ -255,6 +264,26 @@ mod tests {
         assert_eq!(cb.current_state(), CircuitState::Open);
 
         std::thread::sleep(std::time::Duration::from_millis(1));
+        assert!(cb.allow_request());
+        assert_eq!(cb.current_state(), CircuitState::HalfOpen);
+    }
+
+    #[test]
+    fn test_circuit_stays_open_during_timeout() {
+        let cb = CircuitBreaker::new(1, 200); // 200ms reset timeout
+        cb.record_failure();
+        assert_eq!(cb.current_state(), CircuitState::Open);
+
+        // Immediately after failure: still open
+        assert!(!cb.allow_request());
+
+        // After half the timeout: still open
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(!cb.allow_request());
+        assert_eq!(cb.current_state(), CircuitState::Open);
+
+        // After full timeout: transitions to half-open
+        std::thread::sleep(std::time::Duration::from_millis(200));
         assert!(cb.allow_request());
         assert_eq!(cb.current_state(), CircuitState::HalfOpen);
     }

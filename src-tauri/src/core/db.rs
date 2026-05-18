@@ -66,85 +66,59 @@ impl Database {
         let conn = self.open_connection()?;
         info!("Running database migrations...");
 
-        let user_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-
-        if user_version < 1 {
-            info!("Applying migration v1: initial schema");
-            drop(conn);
-            self.apply_v1_initial_schema()?;
-        }
-
-        let conn = self.open_connection()?;
-        let user_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-
-        if user_version < 2 {
-            info!("Applying migration v2: comfyui generation support");
-            drop(conn);
-            self.apply_v2_comfyui_generation()?;
-        }
-
-        let conn = self.open_connection()?;
-        let user_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        let mut current_version: i32 =
+            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
         drop(conn);
 
-        if user_version < 3 {
+        if current_version < 1 {
+            info!("Applying migration v1: initial schema");
+            self.apply_v1_initial_schema()?;
+            current_version = 1;
+        }
+
+        if current_version < 2 {
+            info!("Applying migration v2: comfyui generation support");
+            self.apply_v2_comfyui_generation()?;
+            current_version = 2;
+        }
+
+        if current_version < 3 {
             info!("Applying migration v3: narrative anchor");
             self.apply_v3_narrative_anchor()?;
+            current_version = 3;
         }
 
-        let conn = self.open_connection()?;
-        let final_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        drop(conn);
-
-        if final_version < 4 {
+        if current_version < 4 {
             info!("Applying migration v4: multi-provider inference support");
             self.apply_v4_multi_provider()?;
+            current_version = 4;
         }
 
-        let conn = self.open_connection()?;
-        let user_version_after_v4: i32 =
-            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        drop(conn);
-
-        if user_version_after_v4 < 5 {
+        if current_version < 5 {
             info!("Applying migration v5: AI tag status grading");
             self.apply_v5_ai_tag_status()?;
+            current_version = 5;
         }
 
-        let conn = self.open_connection()?;
-        let user_version_after_v5: i32 =
-            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        drop(conn);
-
-        if user_version_after_v5 < 6 {
+        if current_version < 6 {
             info!("Applying migration v6: unify config tables");
             self.apply_v6_unify_config()?;
+            current_version = 6;
         }
 
-        let conn = self.open_connection()?;
-        let user_version_after_v6: i32 =
-            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        drop(conn);
-
-        if user_version_after_v6 < 7 {
+        if current_version < 7 {
             info!("Applying migration v7: xmp sidecars support");
             self.apply_v7_xmp_sidecars()?;
+            current_version = 7;
         }
 
-        let conn = self.open_connection()?;
-        let user_version_after_v7: i32 =
-            conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        drop(conn);
-
-        if user_version_after_v7 < 8 {
+        if current_version < 8 {
             info!("Applying migration v8: knowledge graph persistence");
             self.apply_v8_knowledge_graph()?;
+            current_version = 8;
         }
 
-        let conn = self.open_connection()?;
-        let final_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        info!("Database is up to date (version {})", final_version);
-
+        info!("Database is up to date (version {})", current_version);
         Ok(())
     }
 
@@ -507,7 +481,9 @@ fn get_db_path(app_handle: &tauri::AppHandle) -> PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
 
-    let _ = std::fs::create_dir_all(&app_data);
+    if let Err(e) = std::fs::create_dir_all(&app_data) {
+        warn!("创建 app data 目录失败: {}", e);
+    }
     app_data.join("arcanecodex.db")
 }
 
@@ -722,7 +698,9 @@ mod tests {
         let result = try_open_database(&db_path);
         assert!(result.is_err(), "Corrupted database should fail to open");
 
-        let _ = std::fs::remove_file(&db_path);
+        if let Err(e) = std::fs::remove_file(&db_path) {
+            warn!("清理测试数据库失败: {}", e);
+        }
         let db = Database::new_from_path(db_path.to_str().unwrap()).unwrap();
         db.run_migrations().unwrap();
 

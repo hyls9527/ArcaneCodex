@@ -59,8 +59,8 @@ export function AIConfig({ onChange }: { onChange?: () => void }) {
       setProvider(config.provider)
       setModel(config.model || '')
       setApiKey(config.api_key || '')
-    } catch {
-      // use defaults
+    } catch (err) {
+      console.warn('[AIConfig] 加载推理配置失败，使用默认值:', err)
     }
   }
 
@@ -73,7 +73,7 @@ export function AIConfig({ onChange }: { onChange?: () => void }) {
       if (opt.type === 'local') {
         setApiKey('')
       }
-      invoke('set_inference_provider', { provider: value, model: opt.defaultModel, apiKey: null }).catch(() => {})
+      invoke('set_inference_provider', { provider: value, model: opt.defaultModel, apiKey: null }).catch((err) => { console.error('[AIConfig] 设置推理提供商失败:', err) })
     }
     setTestResult(null)
     onChange?.()

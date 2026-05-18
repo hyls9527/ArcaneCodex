@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+use tracing::warn;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -10,7 +11,7 @@ use crate::core::{
     face_detector::FaceDetector,
     image_classifier::ImageClassifier,
     onnx_runtime::{ModelStatus, ModelType, OnnxRuntimeManager},
-    vector_index::{HnswVectorIndex, VectorEntry},
+    vector_index::{BruteForceVectorIndex, VectorEntry},
 };
 
 pub struct AppState {
@@ -18,7 +19,7 @@ pub struct AppState {
     pub classifier: Arc<ImageClassifier>,
     pub face_detector: Arc<FaceDetector>,
     pub clip_embedder: Arc<ClipEmbedder>,
-    pub vector_index: Arc<HnswVectorIndex>,
+    pub vector_index: Arc<BruteForceVectorIndex>,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,7 +63,9 @@ pub async fn load_ai_model(
         .await
     {
         Ok(config) => {
-            let _ = state.onnx_manager.warmup_model(model_type).await;
+            if let Err(e) = state.onnx_manager.warmup_model(model_type).await {
+                warn!("ONNX 模型预热失败: {}", e);
+            }
             Ok(ModelLoadResult {
                 success: true,
                 model: Some(ModelStatus {

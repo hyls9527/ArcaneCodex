@@ -184,23 +184,23 @@ fn export_to_csv(metadata_list: &[ImageMetadata], output_path: &PathBuf) -> AppR
 
     for meta in metadata_list {
         csv_content.push_str(&format!(
-            "{},\"{}\",\"{}\",{},{},{},\"{}\",\"{}\",\"{}\",\"{}\",{},{},\"{}\",\"{}\",\"{}\",\"{}\"\n",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
             meta.id,
-            escape_csv(&meta.file_name),
-            escape_csv(&meta.file_path),
+            escape_csv_field(&meta.file_name),
+            escape_csv_field(&meta.file_path),
             meta.file_size,
             meta.width,
             meta.height,
-            escape_csv(&meta.file_hash),
-            escape_csv(&meta.category),
-            escape_csv(&meta.ai_description),
-            escape_csv(&meta.ai_tags),
+            escape_csv_field(&meta.file_hash),
+            escape_csv_field(&meta.category),
+            escape_csv_field(&meta.ai_description),
+            escape_csv_field(&meta.ai_tags),
             meta.ai_confidence,
-            escape_csv(&meta.ai_model),
-            escape_csv(&meta.imported_at),
-            escape_csv(&meta.ai_processed_at),
-            escape_csv(&meta.exif_data),
-            escape_csv(&meta.thumbnail_path),
+            escape_csv_field(&meta.ai_model),
+            escape_csv_field(&meta.imported_at),
+            escape_csv_field(&meta.ai_processed_at),
+            escape_csv_field(&meta.exif_data),
+            escape_csv_field(&meta.thumbnail_path),
         ));
     }
 
@@ -210,8 +210,12 @@ fn export_to_csv(metadata_list: &[ImageMetadata], output_path: &PathBuf) -> AppR
     Ok(metadata_list.len())
 }
 
-fn escape_csv(value: &str) -> String {
-    value.replace("\"", "\"\"")
+pub fn escape_csv_field(value: &str) -> String {
+    if value.contains('"') || value.contains(',') || value.contains('\n') || value.contains('\r') {
+        format!("\"{}\"", value.replace("\"", "\"\""))
+    } else {
+        value.to_string()
+    }
 }
 
 fn validate_export_path(path: &Path) -> AppResult<()> {
@@ -433,11 +437,11 @@ mod tests {
     }
 
     #[test]
-    fn test_escape_csv() {
-        assert_eq!(escape_csv("simple"), "simple");
-        assert_eq!(escape_csv("has,comma"), "has,comma");
-        assert_eq!(escape_csv("has\"quote"), "has\"\"quote");
-        assert_eq!(escape_csv("has\nnewline"), "has\nnewline");
+    fn test_escape_csv_field() {
+        assert_eq!(escape_csv_field("hello"), "hello");
+        assert_eq!(escape_csv_field("hello,world"), "\"hello,world\"");
+        assert_eq!(escape_csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(escape_csv_field("line1\nline2"), "\"line1\nline2\"");
     }
 
     #[test]

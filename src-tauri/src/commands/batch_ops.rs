@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+use crate::commands::export::escape_csv_field;
 use crate::commands::images::sanitize_path;
 use crate::core::ai_queue::AITaskQueue;
 use crate::core::db::Database;
@@ -35,19 +36,20 @@ pub fn start_batch_ai_tag(
     let conn = db.open_connection()?;
 
     let mut enqueued_count = 0;
-    for &image_id in &request.image_ids {
-        let mut stmt = conn.prepare(
-            "SELECT id, file_path FROM images WHERE id = ?1 AND ai_status IN ('pending', 'failed')",
-        )?;
-
-        let rows: Vec<(i64, String)> = stmt
-            .query_map(rusqlite::params![image_id], |row| {
-                Ok((row.get(0)?, row.get(1)?))
+    for chunk in request.image_ids.chunks(500) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id, file_path FROM images WHERE id IN ({}) AND ai_status IN ('pending', 'failed')",
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
             })?
-            .filter_map(|r| r.ok())
-            .collect();
+            .filter_map(|r| r.ok());
 
-        if let Some((id, path)) = rows.into_iter().next() {
+        for (id, path) in rows {
             ai_queue
                 .add_task(id, &path)
                 .map_err(|e| AppError::ai(e.to_string()))?;
@@ -243,30 +245,32 @@ pub fn batch_export(
     let conn = db.open_connection()?;
 
     let mut export_data = Vec::new();
-    for &image_id in &request.image_ids {
-        let mut stmt = conn.prepare(
-            "SELECT id, file_path, file_name, file_size, ai_tags, ai_description, ai_category, ai_confidence 
-             FROM images WHERE id = ?1"
-        )?;
+    for chunk in request.image_ids.chunks(500) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id, file_path, file_name, file_size, ai_tags, ai_description, ai_category, ai_confidence
+             FROM images WHERE id IN ({})",
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql)?;
 
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(i64, String, String, i64, String, String, String, f64)> = stmt
-            .query_map(rusqlite::params![image_id], |row| {
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
                 Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get(6)?,
-                    row.get(7)?,
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, f64>(7)?,
                 ))
             })?
-            .filter_map(|r| r.ok())
-            .collect();
+            .filter_map(|r| r.ok());
 
-        if let Some(row) = rows.into_iter().next() {
+        for row in rows {
             let tags: Vec<String> = serde_json::from_str(&row.4).unwrap_or_default();
             export_data.push(BatchExportRecord {
                 image_id: row.0,
@@ -311,7 +315,10 @@ pub fn batch_export(
             for record in &export_data {
                 csv_content.push_str(&format!(
                     "{},{},{},{}\n",
-                    record.image_id, record.file_path, record.file_name, record.file_size
+                    record.image_id,
+                    escape_csv_field(&record.file_path),
+                    escape_csv_field(&record.file_name),
+                    record.file_size
                 ));
             }
             std::fs::write(&validated_path, csv_content)

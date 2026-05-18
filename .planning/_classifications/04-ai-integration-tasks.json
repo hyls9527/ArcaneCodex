@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/04-ai-integration-tasks.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "AI 集成架构实现任务清单",
+  "summary": "分层自适应AI集成架构的实施任务分解、伪代码与执行计划",
+  "scope": ["AI集成", "前端路由层", "Tauri代理层", "密钥管理", "模型配置界面", "安全测试"],
+  "cross_refs": ["docs/planning/ai-integration-architecture.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Document is an implementation task list with pseudocode. Contains some SPEC-like code snippets but predominantly a planning/task breakdown document without formal endpoint/schema definitions."
+}

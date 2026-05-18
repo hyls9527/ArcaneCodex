@@ -282,7 +282,7 @@ mod tests {
     fn test_encrypt_decrypt_roundtrip() {
         let original = "sk-1234567890abcdef";
         let encrypted = encrypt_api_key(original).unwrap();
-        assert!(encrypted.starts_with(ENCRYPTION_PREFIX_V3));
+        assert!(encrypted.starts_with(ENCRYPTION_PREFIX_V4));
         assert_ne!(encrypted, original);
 
         let decrypted = decrypt_api_key(&encrypted).unwrap();
@@ -308,15 +308,16 @@ mod tests {
     fn test_decrypt_v3_with_wrong_key_returns_empty() {
         let original = "sk-test-key-for-wrong-key-scenario";
         let encrypted = encrypt_api_key(original).unwrap();
-        assert!(encrypted.starts_with(ENCRYPTION_PREFIX_V3));
+        assert!(encrypted.starts_with(ENCRYPTION_PREFIX_V4));
 
-        let tampered = encrypted.replace(ENCRYPTION_PREFIX_V3, "enc:v3:invalidbase64!!!");
+        let tampered = encrypted.replace(ENCRYPTION_PREFIX_V4, "enc:v4:invalidbase64!!!");
         let decrypted = decrypt_api_key(&tampered).unwrap();
         assert_eq!(decrypted, "", "密钥变更或密文损坏时应返回空字符串");
     }
 
     #[test]
     fn test_is_encrypted() {
+        assert!(is_encrypted("enc:v4:somebase64data"));
         assert!(is_encrypted("enc:v3:somebase64data"));
         assert!(is_encrypted("enc:v2:somebase64data"));
         assert!(!is_encrypted("enc:v1:somebase64data")); // v1 已废弃
@@ -329,6 +330,8 @@ mod tests {
         let original = "same-key-value";
         let enc1 = encrypt_api_key(original).unwrap();
         let enc2 = encrypt_api_key(original).unwrap();
+        assert!(enc1.starts_with(ENCRYPTION_PREFIX_V4));
+        assert!(enc2.starts_with(ENCRYPTION_PREFIX_V4));
         assert_ne!(enc1, enc2, "随机 salt+Nonce 应使相同明文产生不同密文");
 
         let dec1 = decrypt_api_key(&enc1).unwrap();
@@ -357,15 +360,15 @@ mod tests {
     }
 
     #[test]
-    fn test_v3_nonce_and_salt_uniqueness() {
+    fn test_v4_nonce_and_salt_uniqueness() {
         let original = "test-nonce-salt-uniqueness";
         let mut salts = std::collections::HashSet::new();
         let mut nonces = std::collections::HashSet::new();
 
         for _ in 0..10 {
             let encrypted = encrypt_api_key(original).unwrap();
-            assert!(encrypted.starts_with(ENCRYPTION_PREFIX_V3));
-            let encoded = &encrypted[ENCRYPTION_PREFIX_V3.len()..];
+            assert!(encrypted.starts_with(ENCRYPTION_PREFIX_V4));
+            let encoded = &encrypted[ENCRYPTION_PREFIX_V4.len()..];
             let data = BASE64.decode(encoded).unwrap();
             assert!(data.len() > SALT_LEN + 12);
             let salt = &data[..SALT_LEN];
@@ -396,6 +399,18 @@ mod tests {
         // v2 格式密文应能正常解密
         let decrypted = decrypt_api_key(&v2_encrypted).unwrap();
         assert_eq!(decrypted, original, "v2 格式密文应能向后兼容解密");
+    }
+
+    #[test]
+    fn test_no_plaintext_fallback_in_encrypt() {
+        // Code review assertion: verify the encrypt_api_key function
+        // does not have a plaintext fallback branch
+        let source = include_str!("crypto.rs");
+        // The plaintext fallback used the string "回退到明文存储"
+        assert!(
+            !source.contains("回退到明文存储"),
+            "encrypt_api_key must not fall back to plaintext storage"
+        );
     }
 
     #[test]

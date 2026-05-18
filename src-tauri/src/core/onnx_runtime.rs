@@ -223,6 +223,7 @@ impl OnnxRuntimeManager {
 
         let output_data = {
             let mut sessions = self.sessions.write().await;
+            // NOTE: write lock required — ort::Session::run() takes &mut self
             if let Some(session) = sessions.get_mut(&model_type) {
                 let outputs = session
                     .run(ort::inputs![input_tensor])

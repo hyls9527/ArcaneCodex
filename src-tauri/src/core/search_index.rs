@@ -14,6 +14,8 @@ fn global_jieba() -> &'static Jieba {
 }
 
 const SEARCH_CACHE_TTL: Duration = Duration::from_secs(300);
+const MAX_CACHE_ENTRIES: usize = 1000;
+const CACHE_EVICT_BATCH: usize = 100;
 
 type SearchCacheStore = Mutex<HashMap<u64, (Instant, Vec<SearchResult>)>>;
 
@@ -219,7 +221,7 @@ impl SearchIndexBuilder {
         if let Some(f) = filters {
             if let Some(ref _category) = f.category {
                 sql.push_str(" AND i.ai_category = ?");
-                params.push(Box::new(f.category.clone().unwrap()));
+                params.push(Box::new(_category.clone()));
             }
             if let Some(ref tags) = f.tags {
                 for _tag in tags {
@@ -235,11 +237,11 @@ impl SearchIndexBuilder {
             }
             if let Some(ref _start_date) = f.start_date {
                 sql.push_str(" AND i.created_at >= ?");
-                params.push(Box::new(f.start_date.clone().unwrap()));
+                params.push(Box::new(_start_date.clone()));
             }
             if let Some(ref _end_date) = f.end_date {
                 sql.push_str(" AND i.created_at <= ?");
-                params.push(Box::new(f.end_date.clone().unwrap()));
+                params.push(Box::new(_end_date.clone()));
             }
         }
 
@@ -288,6 +290,21 @@ impl SearchIndexBuilder {
 
         {
             if let Ok(mut cache) = search_cache().lock() {
+                // Purge expired entries (TTL-based eviction)
+                cache.retain(|_, (timestamp, _)| timestamp.elapsed() < SEARCH_CACHE_TTL);
+
+                // If the cache is still over capacity, evict the oldest batch
+                if cache.len() > MAX_CACHE_ENTRIES {
+                    let mut entries: Vec<(u64, Instant)> = cache
+                        .iter()
+                        .map(|(k, (ts, _))| (*k, *ts))
+                        .collect();
+                    entries.sort_by_key(|(_, ts)| *ts);
+                    for key in entries.iter().take(CACHE_EVICT_BATCH).map(|(k, _)| *k) {
+                        cache.remove(&key);
+                    }
+                }
+
                 cache.insert(cache_key, (Instant::now(), results.clone()));
             }
         }

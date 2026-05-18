@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 use crate::core::lm_studio::parse_ai_response;
 use crate::utils::error::{AppError, AppResult};
+use tracing::{error as trace_error, info, warn};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -176,6 +177,7 @@ impl InferenceProvider for OpenAIClient {
     }
 
     async fn analyze_image(&self, image_path: &str) -> AppResult<AIResult> {
+        info!("[OpenAI] 开始分析图片: {} (model={})", image_path, self.model);
         let image_base64 = crate::core::lm_studio::encode_image_to_base64(image_path)?;
         let mime_type = crate::core::lm_studio::detect_mime_type(image_path)?;
         let prompt = crate::core::lm_studio::build_prompt();

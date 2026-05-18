@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 use serde::{Deserialize, Serialize};
 
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use tauri::State;
@@ -328,8 +329,6 @@ pub async fn get_all_configs(db: State<'_, Database>) -> AppResult<Vec<AppConfig
 #[tauri::command]
 
 pub async fn backup_database(db: State<'_, Database>, output_path: String) -> AppResult<String> {
-    use std::io::{Read, Write};
-
     use zip::write::SimpleFileOptions;
 
     use zip::ZipWriter;
@@ -387,13 +386,7 @@ pub async fn backup_database(db: State<'_, Database>, output_path: String) -> Ap
         let mut db_file = std::fs::File::open(&*db_path_clone)
             .map_err(|e| AppError::config(format!("Operation failed: {}", e)))?;
 
-        let mut buffer = Vec::new();
-
-        db_file
-            .read_to_end(&mut buffer)
-            .map_err(|e| AppError::config(format!("Operation failed: {}", e)))?;
-
-        zip.write_all(&buffer)
+        std::io::copy(&mut db_file, &mut zip)
             .map_err(|e| AppError::config(format!("Failed to add database to zip: {}", e)))?;
 
         // Also include WAL and SHM files if they exist
@@ -412,13 +405,7 @@ pub async fn backup_database(db: State<'_, Database>, output_path: String) -> Ap
             let mut wal_file = std::fs::File::open(&wal_path)
                 .map_err(|e| AppError::config(format!("Failed to process WAL file: {}", e)))?;
 
-            let mut wal_buffer = Vec::new();
-
-            wal_file
-                .read_to_end(&mut wal_buffer)
-                .map_err(|e| AppError::config(format!("Failed to process WAL file: {}", e)))?;
-
-            zip.write_all(&wal_buffer)
+            std::io::copy(&mut wal_file, &mut zip)
                 .map_err(|e| AppError::config(format!("Failed to add database to zip: {}", e)))?;
         }
 
@@ -436,13 +423,7 @@ pub async fn backup_database(db: State<'_, Database>, output_path: String) -> Ap
             let mut shm_file = std::fs::File::open(&shm_path)
                 .map_err(|e| AppError::config(format!("Failed to process SHM file: {}", e)))?;
 
-            let mut shm_buffer = Vec::new();
-
-            shm_file
-                .read_to_end(&mut shm_buffer)
-                .map_err(|e| AppError::config(format!("Failed to process SHM file: {}", e)))?;
-
-            zip.write_all(&shm_buffer)
+            std::io::copy(&mut shm_file, &mut zip)
                 .map_err(|e| AppError::config(format!("Failed to add database to zip: {}", e)))?;
         }
 
@@ -470,7 +451,6 @@ pub async fn backup_database_encrypted(
         Aes256Gcm, Nonce,
     };
     use sha2::{Digest, Sha256};
-    use std::io::{Read, Write};
     use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
 
@@ -499,6 +479,10 @@ pub async fn backup_database_encrypted(
             return Err(AppError::config("Database file not found".to_string()));
         }
 
+        // Note: AES encryption requires the full plaintext, so the complete ZIP
+        // buffer must be held in memory. Individual source files are streamed into
+        // the ZIP to avoid per-file allocations, but the aggregate ZIP buffer
+        // is unavoidable for this encryption scheme.
         let mut zip_buffer = Vec::new();
         {
             let mut zip = ZipWriter::new(std::io::Cursor::new(&mut zip_buffer));
@@ -514,12 +498,7 @@ pub async fn backup_database_encrypted(
             let mut db_file = std::fs::File::open(&*db_path_clone)
                 .map_err(|e| AppError::config(format!("Failed to open database: {}", e)))?;
 
-            let mut buffer = Vec::new();
-            db_file
-                .read_to_end(&mut buffer)
-                .map_err(|e| AppError::config(format!("Failed to read database: {}", e)))?;
-
-            zip.write_all(&buffer)
+            std::io::copy(&mut db_file, &mut zip)
                 .map_err(|e| AppError::config(format!("Failed to write to zip: {}", e)))?;
 
             let wal_path = db_path_clone.with_extension("db-wal");
@@ -535,12 +514,7 @@ pub async fn backup_database_encrypted(
                 let mut wal_file = std::fs::File::open(&wal_path)
                     .map_err(|e| AppError::config(format!("Failed to open WAL file: {}", e)))?;
 
-                let mut wal_buffer = Vec::new();
-                wal_file
-                    .read_to_end(&mut wal_buffer)
-                    .map_err(|e| AppError::config(format!("Failed to read WAL file: {}", e)))?;
-
-                zip.write_all(&wal_buffer)
+                std::io::copy(&mut wal_file, &mut zip)
                     .map_err(|e| AppError::config(format!("Failed to write WAL to zip: {}", e)))?;
             }
 
@@ -557,12 +531,7 @@ pub async fn backup_database_encrypted(
                 let mut shm_file = std::fs::File::open(&shm_path)
                     .map_err(|e| AppError::config(format!("Failed to open SHM file: {}", e)))?;
 
-                let mut shm_buffer = Vec::new();
-                shm_file
-                    .read_to_end(&mut shm_buffer)
-                    .map_err(|e| AppError::config(format!("Failed to read SHM file: {}", e)))?;
-
-                zip.write_all(&shm_buffer)
+                std::io::copy(&mut shm_file, &mut zip)
                     .map_err(|e| AppError::config(format!("Failed to write SHM to zip: {}", e)))?;
             }
 
@@ -759,7 +728,9 @@ pub async fn restore_database(db: State<'_, Database>, backup_path: String) -> A
 
         if !extracted_db.exists() {
 
-            let _ = std::fs::remove_dir_all(&temp_dir);
+            if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
+                warn!("清理临时目录失败: {}", e);
+            }
 
             return Err(AppError::config(format!(
                 "Database file not found in backup: {}",
@@ -808,7 +779,9 @@ pub async fn restore_database(db: State<'_, Database>, backup_path: String) -> A
 
         if backup_version > current_version {
 
-            let _ = std::fs::remove_dir_all(&temp_dir);
+            if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
+                warn!("清理临时目录失败: {}", e);
+            }
 
             return Err(AppError::config(format!(
                 "Backup DB version (v{}) is higher than current version (v{}). Please upgrade the app first.",
@@ -862,7 +835,9 @@ pub async fn restore_database(db: State<'_, Database>, backup_path: String) -> A
 
             // Remove existing WAL if not in backup
 
-            let _ = std::fs::remove_file(&target_wal);
+            if let Err(e) = std::fs::remove_file(&target_wal) {
+                warn!("清理 WAL 文件失败: {}", e);
+            }
 
         }
 
@@ -888,7 +863,9 @@ pub async fn restore_database(db: State<'_, Database>, backup_path: String) -> A
 
             // Remove existing SHM if not in backup
 
-            let _ = std::fs::remove_file(&target_shm);
+            if let Err(e) = std::fs::remove_file(&target_shm) {
+                warn!("清理 SHM 文件失败: {}", e);
+            }
 
         }
 
@@ -1053,7 +1030,9 @@ pub async fn restore_database_encrypted(
             std::fs::copy(&source_wal, &target_wal)
                 .map_err(|e| AppError::config(format!("Failed to restore WAL file: {}", e)))?;
         } else if target_wal.exists() {
-            let _ = std::fs::remove_file(&target_wal);
+            if let Err(e) = std::fs::remove_file(&target_wal) {
+                warn!("清理 WAL 文件失败: {}", e);
+            }
         }
 
         let source_shm = temp_dir.join(
@@ -1067,7 +1046,9 @@ pub async fn restore_database_encrypted(
             std::fs::copy(&source_shm, &target_shm)
                 .map_err(|e| AppError::config(format!("Failed to restore SHM file: {}", e)))?;
         } else if target_shm.exists() {
-            let _ = std::fs::remove_file(&target_shm);
+            if let Err(e) = std::fs::remove_file(&target_shm) {
+                warn!("清理 SHM 文件失败: {}", e);
+            }
         }
 
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -1267,8 +1248,6 @@ mod tests {
 
         output_path: &std::path::Path,
     ) -> Result<String, AppError> {
-        use std::io::{Read, Write};
-
         use zip::write::SimpleFileOptions;
 
         use zip::ZipWriter;
@@ -1304,13 +1283,7 @@ mod tests {
         let mut db_file = std::fs::File::open(db_path)
             .map_err(|e| AppError::config(format!("Failed to open database file: {}", e)))?;
 
-        let mut buffer = Vec::new();
-
-        db_file
-            .read_to_end(&mut buffer)
-            .map_err(|e| AppError::config(format!("Failed to read database file: {}", e)))?;
-
-        zip.write_all(&buffer)
+        std::io::copy(&mut db_file, &mut zip)
             .map_err(|e| AppError::config(format!("Failed to write to zip: {}", e)))?;
 
         let wal_path = db_path.with_extension("db-wal");
@@ -1327,13 +1300,7 @@ mod tests {
             let mut wal_file = std::fs::File::open(&wal_path)
                 .map_err(|e| AppError::config(format!("Failed to open WAL file: {}", e)))?;
 
-            let mut wal_buffer = Vec::new();
-
-            wal_file
-                .read_to_end(&mut wal_buffer)
-                .map_err(|e| AppError::config(format!("Failed to read WAL file: {}", e)))?;
-
-            zip.write_all(&wal_buffer)
+            std::io::copy(&mut wal_file, &mut zip)
                 .map_err(|e| AppError::config(format!("Failed to write WAL to zip: {}", e)))?;
         }
 
@@ -1351,13 +1318,7 @@ mod tests {
             let mut shm_file = std::fs::File::open(&shm_path)
                 .map_err(|e| AppError::config(format!("Failed to open SHM file: {}", e)))?;
 
-            let mut shm_buffer = Vec::new();
-
-            shm_file
-                .read_to_end(&mut shm_buffer)
-                .map_err(|e| AppError::config(format!("Failed to read SHM file: {}", e)))?;
-
-            zip.write_all(&shm_buffer)
+            std::io::copy(&mut shm_file, &mut zip)
                 .map_err(|e| AppError::config(format!("Failed to write SHM to zip: {}", e)))?;
         }
 
@@ -1442,7 +1403,9 @@ mod tests {
         let extracted_db = temp_dir.join(&db_file_name);
 
         if !extracted_db.exists() {
-            let _ = std::fs::remove_dir_all(&temp_dir);
+            if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
+                warn!("清理临时目录失败: {}", e);
+            }
 
             return Err(AppError::config(format!(
                 "Database operation failed: {}",
@@ -1476,7 +1439,9 @@ mod tests {
         };
 
         if backup_version > current_version {
-            let _ = std::fs::remove_dir_all(&temp_dir);
+            if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
+                warn!("清理临时目录失败: {}", e);
+            }
 
             return Err(AppError::config(format!(
                 "Backup DB version (v{}) is higher than current (v{}). Upgrade the app first.",
@@ -1513,7 +1478,9 @@ mod tests {
         if extracted_wal.exists() {
             std::fs::copy(&extracted_wal, &target_wal).ok();
         } else if target_wal.exists() {
-            let _ = std::fs::remove_file(&target_wal);
+            if let Err(e) = std::fs::remove_file(&target_wal) {
+                warn!("清理 WAL 文件失败: {}", e);
+            }
         }
 
         // SHM
@@ -1527,7 +1494,9 @@ mod tests {
         if extracted_shm.exists() {
             std::fs::copy(&extracted_shm, &target_shm).ok();
         } else if target_shm.exists() {
-            let _ = std::fs::remove_file(&target_shm);
+            if let Err(e) = std::fs::remove_file(&target_shm) {
+                warn!("清理 SHM 文件失败: {}", e);
+            }
         }
 
         let _ = std::fs::remove_dir_all(&temp_dir);

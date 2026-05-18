@@ -45,22 +45,24 @@ pub fn generate_xmp_sidecar(image_path: String, metadata: serde_json::Value) -> 
 /// 批量导出图片为 XMP Sidecar 文件
 #[tauri::command]
 pub fn export_as_xmp(image_ids: Vec<i64>, db: State<'_, Database>) -> AppResult<Vec<String>> {
-    use rusqlite::params;
-
     let conn = db.open_connection().map_err(AppError::database)?;
     let mut sidecar_paths = Vec::new();
 
-    for id in image_ids {
-        let row: Option<String> = conn
-            .query_row(
-                "SELECT file_path FROM images WHERE id = ?",
-                params![id],
-                |row| row.get(0),
-            )
-            .ok()
-            .flatten();
+    for chunk in image_ids.chunks(500) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id, file_path FROM images WHERE id IN ({})",
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql).map_err(AppError::database)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(AppError::database)?;
 
-        if let Some(path_str) = row {
+        for row in rows {
+            let (id, path_str) = row.map_err(AppError::database)?;
             let path = std::path::Path::new(&path_str);
             let default_meta = XmpMetadata::default();
 

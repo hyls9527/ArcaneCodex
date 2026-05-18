@@ -117,6 +117,15 @@ pub(crate) fn sanitize_path(
         if RESERVED_NAMES.contains(&file_name.as_str()) {
             return Err(format!("使用 Windows 保留文件名: {}", file_name));
         }
+        // 组件级检查：扫描所有路径组件中的保留名称（如 C:\valid\CON\file.txt）
+        for component in path.components() {
+            if let std::path::Component::Normal(name) = component {
+                let name_lower = name.to_string_lossy().to_lowercase();
+                if RESERVED_NAMES.contains(&name_lower.as_str()) {
+                    return Err(format!("路径组件包含 Windows 保留名称: {}", name_lower));
+                }
+            }
+        }
     }
 
     // ===== 层3: 组件级遍历检查 =====
@@ -640,7 +649,9 @@ fn get_thumbnail_dir(app: &AppHandle) -> std::path::PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
     let dir = app_data.join("thumbnails");
-    let _ = fs::create_dir_all(&dir);
+    if let Err(e) = fs::create_dir_all(&dir) {
+        warn!("创建缩略图目录失败: {}", e);
+    }
     dir
 }
 
@@ -802,7 +813,7 @@ pub async fn import_images(
                 .to_string();
 
             // Emit processing progress
-            let _ = app.emit(
+            if let Err(e) = app.emit(
                 "import-progress",
                 ImportProgress {
                     current_file: file_name.clone(),
@@ -810,7 +821,9 @@ pub async fn import_images(
                     total,
                     status: ImportStatus::Processing,
                 },
-            );
+            ) {
+                warn!("发送导入进度事件失败: {}", e);
+            }
 
             match validate_file(&canonical_path) {
                 Ok((mime_type, file_size)) => match calculate_sha256(&canonical_path) {
@@ -818,7 +831,7 @@ pub async fn import_images(
                         Ok(true) => {
                             info!("跳过重复文件: {}", canonical_str);
                             result.duplicate_count += 1;
-                            let _ = app.emit(
+                            if let Err(e) = app.emit(
                                 "import-progress",
                                 ImportProgress {
                                     current_file: file_name.clone(),
@@ -826,7 +839,9 @@ pub async fn import_images(
                                     total,
                                     status: ImportStatus::Duplicate,
                                 },
-                            );
+                            ) {
+                warn!("发送导入进度事件失败: {}", e);
+            }
                         }
                         Ok(false) => {
                             match insert_image_record(
@@ -847,7 +862,7 @@ pub async fn import_images(
                                     result.success_count += 1;
                                     result.image_ids.push(id);
 
-                                    let _ = app.emit(
+                                    if let Err(e) = app.emit(
                                         "import-progress",
                                         ImportProgress {
                                             current_file: file_name.clone(),
@@ -855,7 +870,9 @@ pub async fn import_images(
                                             total,
                                             status: ImportStatus::Success,
                                         },
-                                    );
+                                    ) {
+                warn!("发送导入进度事件失败: {}", e);
+            }
                                 }
                                 Err(e) => {
                                     error!("数据库插入失败: {} - {}", file_name, e);
@@ -864,7 +881,7 @@ pub async fn import_images(
                                         file_path: canonical_str.clone(),
                                         reason: e.to_string(),
                                     });
-                                    let _ = app.emit(
+                                    if let Err(e) = app.emit(
                                         "import-progress",
                                         ImportProgress {
                                             current_file: file_name.clone(),
@@ -872,7 +889,9 @@ pub async fn import_images(
                                             total,
                                             status: ImportStatus::Error,
                                         },
-                                    );
+                                    ) {
+                warn!("发送导入进度事件失败: {}", e);
+            }
                                 }
                             }
                         }
@@ -883,7 +902,7 @@ pub async fn import_images(
                                 file_path: canonical_str.clone(),
                                 reason: e.to_string(),
                             });
-                            let _ = app.emit(
+                            if let Err(e) = app.emit(
                                 "import-progress",
                                 ImportProgress {
                                     current_file: file_name.clone(),
@@ -891,7 +910,9 @@ pub async fn import_images(
                                     total,
                                     status: ImportStatus::Error,
                                 },
-                            );
+                            ) {
+                warn!("发送导入进度事件失败: {}", e);
+            }
                         }
                     },
                     Err(e) => {
@@ -901,7 +922,7 @@ pub async fn import_images(
                             file_path: canonical_str.clone(),
                             reason: format!("哈希计算失败: {}", e),
                         });
-                        let _ = app.emit(
+                        if let Err(e) = app.emit(
                             "import-progress",
                             ImportProgress {
                                 current_file: file_name.clone(),
@@ -909,7 +930,9 @@ pub async fn import_images(
                                 total,
                                 status: ImportStatus::Error,
                             },
-                        );
+                        ) {
+                warn!("发送导入进度事件失败: {}", e);
+            }
                     }
                 },
                 Err(e) => {
@@ -919,7 +942,7 @@ pub async fn import_images(
                         file_path: canonical_str.clone(),
                         reason: e.to_string(),
                     });
-                    let _ = app.emit(
+                    if let Err(e) = app.emit(
                         "import-progress",
                         ImportProgress {
                             current_file: file_name.clone(),
@@ -927,7 +950,9 @@ pub async fn import_images(
                             total,
                             status: ImportStatus::Error,
                         },
-                    );
+                    ) {
+                warn!("发送导入进度事件失败: {}", e);
+            }
                 }
             }
         }
@@ -958,24 +983,36 @@ pub async fn import_images(
                     let thumb_path_clone = thumb_path.clone();
 
                     let process_result = tokio::task::spawn_blocking(move || {
-                        let thumb_result =
-                            ImageProcessor::generate_thumbnail(&file_path_clone, &thumb_path_clone);
-                        let phash_result = ImageProcessor::calculate_phash(&file_path_clone);
-                        let exif_result = ImageProcessor::extract_exif(&file_path_clone);
-                        let (w, h) = match &exif_result {
-                            Ok(exif) => (
-                                exif.get("width").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                                exif.get("height").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                        // Decode image ONCE; thumbnail and pHash use the decoded buffer,
+                        // while EXIF reads the raw file bytes (no second decode).
+                        let img = image::open(Path::new(&file_path_clone)).ok();
+                        let (w, h) = img
+                            .as_ref()
+                            .map(|i| i.dimensions())
+                            .unwrap_or((0, 0));
+
+                        let thumb_result = match &img {
+                            Some(img) => ImageProcessor::generate_thumbnail_from_image(
+                                img,
+                                Path::new(&thumb_path_clone),
                             ),
-                            Err(_) => match image::open(Path::new(&file_path_clone)) {
-                                Ok(img) => {
-                                    let (width, height) = img.dimensions();
-                                    (width as i32, height as i32)
-                                }
-                                Err(_) => (0, 0),
-                            },
+                            None => Err(AppError::validation(format!(
+                                "无法打开图片: {}",
+                                file_path_clone
+                            ))),
                         };
-                        (thumb_result, phash_result, exif_result, w, h)
+                        let phash_result = match &img {
+                            Some(img) => ImageProcessor::calculate_phash_from_image(img),
+                            None => Err(AppError::validation(format!(
+                                "无法打开图片: {}",
+                                file_path_clone
+                            ))),
+                        };
+                        // EXIF reads raw file bytes via BufReader<File> -- no image::open needed
+                        let exif_result =
+                            ImageProcessor::extract_exif_from_file(&file_path_clone, w, h);
+
+                        (thumb_result, phash_result, exif_result, w as i32, h as i32)
                     })
                     .await;
 
@@ -1037,7 +1074,7 @@ pub async fn import_images(
                     );
 
                     // 发送元数据处理进度
-                    let _ = app.emit(
+                    if let Err(e) = app.emit(
                         "import-metadata-progress",
                         ImportProgress {
                             current_file: import.file_name.clone(),
@@ -1045,7 +1082,9 @@ pub async fn import_images(
                             total: pending_imports.len(),
                             status: ImportStatus::Processing,
                         },
-                    );
+                    ) {
+                warn!("发送导入进度事件失败: {}", e);
+            }
                 }
                 Err(e) => {
                     error!("[阶段2] 无法获取数据库连接 (ID: {}): {}", import.id, e);
@@ -1119,6 +1158,12 @@ pub async fn get_images(
         }
     }
 
+    // SAFE-03: Dynamic SQL construction — column names are hardcoded in conditional
+    // branches above (lines 1144-1159), NOT from user input. Only the `?` placeholders
+    // accept runtime values, which are passed via `param_refs` as parameterized bindings.
+    // The join(" AND ") operates on hardcoded condition strings only.
+    // WARNING: If adding new filter conditions, ALWAYS use hardcoded column names
+    // with `?` parameters for values. NEVER interpolate user input into SQL identifiers.
     if !conditions.is_empty() {
         let where_clause = format!(" WHERE {}", conditions.join(" AND "));
         count_sql.push_str(&where_clause);
@@ -1245,66 +1290,73 @@ pub async fn delete_images(db: State<'_, Database>, ids: Vec<i64>) -> AppResult<
     let conn = db.open_connection().map_err(AppError::database)?;
     let tx = conn.unchecked_transaction().map_err(AppError::database)?;
 
-    let mut deleted = 0;
-
-    for &id in &ids {
-        // 1. 查询 thumbnail_path 和 file_path
-        let thumb_path: Option<String> = tx
-            .query_row(
-                "SELECT thumbnail_path FROM images WHERE id = ?",
-                rusqlite::params![id],
-                |row| row.get(0),
-            )
-            .ok();
-
-        let file_path: Option<String> = tx
-            .query_row(
-                "SELECT file_path FROM images WHERE id = ?",
-                rusqlite::params![id],
-                |row| row.get(0),
-            )
-            .ok();
-
-        // 2. 删除 search_index 记录
-        tx.execute(
-            "DELETE FROM search_index WHERE image_id = ?",
-            rusqlite::params![id],
-        )
-        .map_err(AppError::database)?;
-
-        // 3. 删除 images 记录（image_tags 由外键 CASCADE 自动删除）
-        let row_deleted = tx
-            .execute("DELETE FROM images WHERE id = ?", rusqlite::params![id])
+    // Batch SELECT all image paths before deletion
+    let mut image_rows: Vec<(i64, Option<String>, Option<String>)> = Vec::new();
+    for chunk in ids.chunks(500) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id, thumbnail_path, file_path FROM images WHERE id IN ({})",
+            placeholders
+        );
+        let mut stmt = tx.prepare(&sql).map_err(AppError::database)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })
             .map_err(AppError::database)?;
 
-        if row_deleted > 0 {
-            deleted += 1;
+        for row in rows {
+            image_rows.push(row.map_err(AppError::database)?);
+        }
+    }
 
-            // 4. 删除缩略图文件（失败仅 warn，不阻塞）
-            if let Some(thumb) = &thumb_path {
-                let thumb_path = Path::new(thumb);
-                if thumb_path.exists() {
-                    if let Err(e) = fs::remove_file(thumb_path) {
-                        warn!("删除缩略图失败 {}: {}", thumb, e);
-                    } else {
-                        info!("已删除缩略图: {}", thumb);
-                    }
+    let deleted = image_rows.len();
+
+    // Batch DELETE from search_index
+    // SAFE-03: Dynamic IN clause uses format!() only to build the ?,?,? placeholder
+    // string. Values are ALWAYS passed via params_from_iter() for parameterized binding.
+    // WARNING: Never interpolate string values into the IN clause format —
+    // always use params_from_iter for parameterized binding.
+    for chunk in ids.chunks(500) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("DELETE FROM search_index WHERE image_id IN ({})", placeholders);
+        tx.execute(&sql, rusqlite::params_from_iter(chunk.iter()))
+            .map_err(AppError::database)?;
+    }
+
+    // Batch DELETE from images (image_tags handled by CASCADE)
+    for chunk in ids.chunks(500) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("DELETE FROM images WHERE id IN ({})", placeholders);
+        tx.execute(&sql, rusqlite::params_from_iter(chunk.iter()))
+            .map_err(AppError::database)?;
+    }
+
+    // Clean up files for deleted images
+    for (_id, thumb_path, file_path) in &image_rows {
+        if let Some(thumb) = thumb_path {
+            let thumb_path = Path::new(thumb);
+            if thumb_path.exists() {
+                if let Err(e) = fs::remove_file(thumb_path) {
+                    warn!("删除缩略图失败 {}: {}", thumb, e);
+                } else {
+                    info!("已删除缩略图: {}", thumb);
                 }
             }
+        }
 
-            // 5. 如果原文件在应用数据目录内，也一并删除
-            if let Some(fp) = &file_path {
-                if fp.starts_with("/app/")
-                    || fp.starts_with("\\app\\")
-                    || fp.contains("imported_images")
-                {
-                    let orig_path = Path::new(fp);
-                    if orig_path.exists() {
-                        if let Err(e) = fs::remove_file(orig_path) {
-                            warn!("删除原文件失败 {}: {}", fp, e);
-                        } else {
-                            info!("已删除原文件: {}", fp);
-                        }
+        if let Some(fp) = file_path {
+            if fp.starts_with("/app/") || fp.starts_with("\\app\\") || fp.contains("imported_images") {
+                let orig_path = Path::new(fp);
+                if orig_path.exists() {
+                    if let Err(e) = fs::remove_file(orig_path) {
+                        warn!("删除原文件失败 {}: {}", fp, e);
+                    } else {
+                        info!("已删除原文件: {}", fp);
                     }
                 }
             }
@@ -1344,7 +1396,6 @@ pub async fn check_broken_links(db: State<'_, Database>) -> AppResult<CheckBroke
         .map_err(AppError::database)?;
 
     let mut broken_images: Vec<BrokenLinkInfo> = Vec::new();
-    let mut ids_to_mark: Vec<i64> = Vec::new();
 
     for row in rows {
         match row {
@@ -1356,7 +1407,6 @@ pub async fn check_broken_links(db: State<'_, Database>) -> AppResult<CheckBroke
                         file_path: file_path.clone(),
                         file_name: file_name.clone(),
                     });
-                    ids_to_mark.push(id);
                 }
             }
             Err(e) => {
@@ -1365,18 +1415,21 @@ pub async fn check_broken_links(db: State<'_, Database>) -> AppResult<CheckBroke
         }
     }
 
-    // Mark broken images in database
-    if !ids_to_mark.is_empty() {
-        for &id in &ids_to_mark {
-            match conn.execute(
-                "UPDATE images SET ai_status = 'broken_link', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                rusqlite::params![id],
-            ) {
+    // Mark broken images in database via batch UPDATE
+    if !broken_images.is_empty() {
+        let ids: Vec<i64> = broken_images.iter().map(|b| b.id).collect();
+        for chunk in ids.chunks(500) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "UPDATE images SET ai_status = 'broken_link', updated_at = CURRENT_TIMESTAMP WHERE id IN ({})",
+                placeholders
+            );
+            match conn.execute(&sql, rusqlite::params_from_iter(chunk.iter())) {
                 Ok(updated) => {
-                    info!("已标记图片 {} 为 broken_link (影响行数: {})", id, updated);
+                    info!("已标记 {} 张图片为 broken_link (影响行数: {})", chunk.len(), updated);
                 }
                 Err(e) => {
-                    error!("标记图片 {} 为 broken_link 失败: {}", id, e);
+                    error!("批量标记图片为 broken_link 失败: {}", e);
                 }
             }
         }
@@ -2318,22 +2371,19 @@ mod tests {
 
         // 缩略图
         let thumb_path = temp_dir.path().join(format!("thumb_{}.webp", id));
-        let thumb_result = ImageProcessor::generate_thumbnail(
-            path_str,
-            thumb_path
-                .to_str()
-                .expect("thumb path should be valid UTF-8"),
-        );
+        let img = image::open(path_str).expect("image should open");
+        let thumb_result = ImageProcessor::generate_thumbnail_from_image(&img, &thumb_path);
         assert!(thumb_result.is_ok(), "缩略图应成功生成: {:?}", thumb_result);
         assert!(thumb_path.exists(), "缩略图文件应存在");
 
         // pHash
         let phash =
-            ImageProcessor::calculate_phash(path_str).expect("pHash calculation should succeed");
+            ImageProcessor::calculate_phash_from_image(&img).expect("pHash calculation should succeed");
         assert!(!phash.is_empty(), "pHash 不应为空");
 
         // EXIF
-        let exif = ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
+        let (width, height) = img.dimensions();
+        let exif = ImageProcessor::extract_exif_from_file(path_str, width, height).expect("EXIF extraction should succeed");
         assert!(exif.get("width").is_some(), "EXIF 应包含宽度");
 
         // 写回元数据
@@ -2402,20 +2452,15 @@ mod tests {
             .expect("image record insertion should succeed");
 
         // 使用不存在的图片路径触发缩略图生成失败
-        let thumb_result = ImageProcessor::generate_thumbnail(
-            "/nonexistent/fake_image.jpg",
-            temp_dir
-                .path()
-                .join("thumb.webp")
-                .to_str()
-                .expect("thumb path should be valid UTF-8"),
-        );
+        let thumb_result = image::open("/nonexistent/fake_image.jpg");
         assert!(thumb_result.is_err(), "缩略图生成对不存在图片应失败");
 
         // 但元数据更新应成功
+        let img = image::open(path_str).expect("image should open");
         let phash =
-            ImageProcessor::calculate_phash(path_str).expect("pHash calculation should succeed");
-        let exif = ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
+            ImageProcessor::calculate_phash_from_image(&img).expect("pHash calculation should succeed");
+        let (width, height) = img.dimensions();
+        let exif = ImageProcessor::extract_exif_from_file(path_str, width, height).expect("EXIF extraction should succeed");
         let exif_json = serde_json::to_string(&exif).expect("EXIF serialization should succeed");
 
         let meta_result = update_image_metadata(&conn, id, "", &phash, 640, 480, &exif_json);
@@ -2448,20 +2493,17 @@ mod tests {
             .expect("image record insertion should succeed");
 
         // pHash 对不存在文件应失败
-        let phash_result = ImageProcessor::calculate_phash("/nonexistent/image.jpg");
+        let phash_result = image::open("/nonexistent/image.jpg");
         assert!(phash_result.is_err(), "pHash 对不存在文件应失败");
 
         // 但其他流程应继续
         let thumb_path = temp_dir.path().join(format!("thumb_{}.webp", id));
-        ImageProcessor::generate_thumbnail(
-            path_str,
-            thumb_path
-                .to_str()
-                .expect("thumb path should be valid UTF-8"),
-        )
-        .expect("thumbnail generation should succeed");
+        let img = image::open(path_str).expect("image should open");
+        ImageProcessor::generate_thumbnail_from_image(&img, &thumb_path)
+            .expect("thumbnail generation should succeed");
 
-        let exif = ImageProcessor::extract_exif(path_str).expect("EXIF extraction should succeed");
+        let (width, height) = img.dimensions();
+        let exif = ImageProcessor::extract_exif_from_file(path_str, width, height).expect("EXIF extraction should succeed");
         let exif_json = serde_json::to_string(&exif).expect("EXIF serialization should succeed");
         update_image_metadata(
             &conn,

@@ -1,0 +1,16 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/v1.0.0-rc/RALPH_STATE.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "RALPH 当前状态 (Current State)",
+  "summary": "Project status overview tracking completion across all development phases",
+  "scope": ["ArcaneCodex", "development phases", "project progress", "blockers", "task tracking"],
+  "cross_refs": [
+    "04-ralph-tasks.md",
+    "05-test-plan.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

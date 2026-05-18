@@ -19,7 +19,7 @@ export function SampleDataBanner({ onCleared }: SampleDataBannerProps) {
           setVisible(true)
         }
       })
-      .catch(() => {})
+      .catch((err) => { console.warn('[SampleDataBanner] 检查示例数据失败:', err) })
   }, [])
 
   const handleClear = useCallback(async () => {

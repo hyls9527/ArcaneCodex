@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/v1.0.0-rc/01-requirements.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "项目需求文档 (PRD)",
+  "summary": "Product requirements for a Tauri 2.x desktop image management system with local AI auto-tagging.",
+  "scope": ["image management", "AI auto-tagging", "smart deduplication", "semantic search", "Tauri", "React", "LM Studio"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

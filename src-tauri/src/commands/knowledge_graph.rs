@@ -5,7 +5,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::core::knowledge_graph::{
-    EdgeType, GraphCommunity, GraphEdge, GraphNode, GraphPath, GraphStats, KnowledgeGraphEngine,
+    EdgeType, GraphComponent, GraphEdge, GraphNode, GraphPath, GraphStats, KnowledgeGraphEngine,
     NeighborResult,
 };
 
@@ -52,7 +52,7 @@ pub async fn kg_get_all_edges(state: State<'_, KgState>) -> Result<Vec<GraphEdge
 }
 
 #[tauri::command]
-pub async fn kg_get_communities(state: State<'_, KgState>) -> Result<Vec<GraphCommunity>, String> {
+pub async fn kg_get_communities(state: State<'_, KgState>) -> Result<Vec<GraphComponent>, String> {
     Ok(state.engine.get_communities().await)
 }
 

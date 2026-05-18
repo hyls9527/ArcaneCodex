@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/ai-integration-architecture.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "AI 集成架构设计：分层自适应架构",
+  "summary": "定义前端直调与后端代理结合的分层自适应AI集成架构及组件",
+  "scope": ["AI集成", "前端路由", "Tauri代理", "密钥管理", "安全边界", "数据流"],
+  "cross_refs": ["docs/planning/04-ai-integration-tasks.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Document is an architecture design specification with diagrams, data flows, component definitions, and risk tables. Lacks formal ADR markers (no Status/Decision/Consequences sections) but provides technical implementation contracts. Some ADR-like decision documentation but predominantly a technical specification."
+}

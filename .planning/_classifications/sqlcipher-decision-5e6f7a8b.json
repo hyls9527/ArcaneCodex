@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/sqlcipher-decision.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "SQLite 加密方案决策文档",
+  "summary": "Evaluates SQLCipher vs application-layer encryption vs plaintext for ArcaneCodex SQLite database encryption.",
+  "scope": ["SQLite", "SQLCipher", "database encryption", "ArcaneCodex", "AES-256-GCM", "cryptography", "privacy"],
+  "cross_refs": ["file:///e:/ArcaneCodex/src-tauri/Cargo.toml", "file:///e:/ArcaneCodex/src-tauri/src/core/db.rs", "file:///e:/ArcaneCodex/src-tauri/src/utils/crypto.rs"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

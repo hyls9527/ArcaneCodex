@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+use tracing::warn;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -155,13 +156,19 @@ impl XmpService {
         let mut meta = XmpMeta::new();
 
         if let Some(ref c) = metadata.creator {
-            let _ = meta.set_property(ns::DC, "creator", XmpValue::String(c.clone()));
+            if let Err(e) = meta.set_property(ns::DC, "creator", XmpValue::String(c.clone())) {
+                warn!("设置 XMP 属性失败: {}", e);
+            }
         }
         if let Some(ref t) = metadata.title {
-            let _ = meta.set_property(ns::DC, "title", XmpValue::String(t.clone()));
+            if let Err(e) = meta.set_property(ns::DC, "title", XmpValue::String(t.clone())) {
+                warn!("设置 XMP 属性失败: {}", e);
+            }
         }
         if let Some(ref d) = metadata.description {
-            let _ = meta.set_property(ns::DC, "description", XmpValue::String(d.clone()));
+            if let Err(e) = meta.set_property(ns::DC, "description", XmpValue::String(d.clone())) {
+                warn!("设置 XMP 属性失败: {}", e);
+            }
         }
         if !metadata.subject.is_empty() {
             let _ = meta.set_property(
@@ -171,11 +178,13 @@ impl XmpService {
             );
         }
         if !metadata.keywords.is_empty() {
-            let _ = meta.set_property(
+            if let Err(e) = meta.set_property(
                 "http://ns.adobe.com/pdf/1.3/",
                 "Keywords",
                 XmpValue::String(metadata.keywords.join(", ")),
-            );
+            ) {
+                warn!("设置 XMP 属性失败: {}", e);
+            }
         }
         // 标记创建工具
         let _ = meta.set_property(

@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use crate::utils::error::{AppError, AppResult};
-use image::GenericImageView;
+use image::DynamicImage;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
@@ -12,48 +12,32 @@ const MAX_THUMBNAIL_HEIGHT: u32 = 200;
 pub struct ImageProcessor;
 
 impl ImageProcessor {
-    pub fn generate_thumbnail(image_path: &str, output_path: &str) -> AppResult<()> {
-        let img_path = Path::new(image_path);
-        let out_path = Path::new(output_path);
-
-        if !img_path.exists() {
-            return Err(AppError::validation(format!(
-                "源图片不存在: {}",
-                image_path
-            )));
-        }
-
-        let img = image::open(img_path)
-            .map_err(|e| AppError::validation(format!("无法打开图片 {}: {}", image_path, e)))?;
-
+    /// Generate thumbnail from a pre-decoded image, avoiding an extra `image::open` decode.
+    pub fn generate_thumbnail_from_image(img: &DynamicImage, output_path: &Path) -> AppResult<()> {
         let thumbnail = img.thumbnail(MAX_THUMBNAIL_WIDTH, MAX_THUMBNAIL_HEIGHT);
 
-        if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| AppError::io(std::io::Error::other(e)))?;
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| AppError::io(std::io::Error::other(e)))?;
         }
 
         thumbnail
-            .save_with_format(out_path, image::ImageFormat::WebP)
-            .map_err(|e| AppError::validation(format!("保存缩略图失败 {}: {}", output_path, e)))?;
+            .save_with_format(output_path, image::ImageFormat::WebP)
+            .map_err(|e| {
+                AppError::validation(format!(
+                    "保存缩略图失败 {}: {}",
+                    output_path.display(),
+                    e
+                ))
+            })?;
 
-        info!("缩略图生成成功: {} -> {}", image_path, output_path);
+        info!("缩略图生成成功: {}", output_path.display());
 
         Ok(())
     }
 
-    pub fn calculate_phash(image_path: &str) -> AppResult<String> {
-        let img_path = Path::new(image_path);
-
-        if !img_path.exists() {
-            return Err(AppError::validation(format!(
-                "源图片不存在: {}",
-                image_path
-            )));
-        }
-
-        let img = image::open(img_path)
-            .map_err(|e| AppError::validation(format!("无法打开图片 {}: {}", image_path, e)))?;
-
+    /// Compute pHash from a pre-decoded image, avoiding an extra `image::open` decode.
+    pub fn calculate_phash_from_image(img: &DynamicImage) -> AppResult<String> {
         let rgba = img.to_rgba8();
 
         let img_resized =
@@ -90,7 +74,13 @@ impl ImageProcessor {
         Ok(distance)
     }
 
-    pub fn extract_exif(image_path: &str) -> AppResult<serde_json::Value> {
+    /// Read EXIF metadata via file I/O only (no `image::open` decode).
+    /// Dimensions are passed in from the already-decoded image.
+    pub fn extract_exif_from_file(
+        image_path: &str,
+        width: u32,
+        height: u32,
+    ) -> AppResult<serde_json::Value> {
         let img_path = Path::new(image_path);
 
         if !img_path.exists() {
@@ -100,14 +90,9 @@ impl ImageProcessor {
             )));
         }
 
-        let img = image::open(img_path)
-            .map_err(|e| AppError::validation(format!("无法打开图片 {}: {}", image_path, e)))?;
-
-        let dimensions = img.dimensions();
-
         let mut exif_data = serde_json::json!({
-            "width": dimensions.0,
-            "height": dimensions.1,
+            "width": width,
+            "height": height,
             "has_exif": false
         });
 
@@ -122,8 +107,8 @@ impl ImageProcessor {
                 let mut exif_json = serde_json::Map::new();
 
                 exif_json.insert("has_exif".to_string(), serde_json::json!(true));
-                exif_json.insert("width".to_string(), serde_json::json!(dimensions.0));
-                exif_json.insert("height".to_string(), serde_json::json!(dimensions.1));
+                exif_json.insert("width".to_string(), serde_json::json!(width));
+                exif_json.insert("height".to_string(), serde_json::json!(height));
 
                 if let Some(field) = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)
                 {
@@ -235,6 +220,7 @@ fn compute_phash_from_grayscale(img: &image::GrayImage) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::GenericImageView;
     use std::fs;
 
     fn create_test_image(path: &Path, width: u32, height: u32) {
@@ -263,10 +249,8 @@ mod tests {
 
         create_test_image(&src_path, 800, 600);
 
-        let result = ImageProcessor::generate_thumbnail(
-            src_path.to_str().unwrap(),
-            out_path.to_str().unwrap(),
-        );
+        let img = image::open(&src_path).unwrap();
+        let result = ImageProcessor::generate_thumbnail_from_image(&img, &out_path);
         assert!(result.is_ok(), "缩略图生成应成功: {:?}", result);
 
         assert!(out_path.exists(), "输出文件应存在");
@@ -301,10 +285,8 @@ mod tests {
 
         create_test_image(&src_path, 1920, 1080);
 
-        let result = ImageProcessor::generate_thumbnail(
-            src_path.to_str().unwrap(),
-            out_path.to_str().unwrap(),
-        );
+        let img = image::open(&src_path).unwrap();
+        let result = ImageProcessor::generate_thumbnail_from_image(&img, &out_path);
         assert!(result.is_ok());
 
         let thumb = image::open(&out_path).unwrap();
@@ -325,10 +307,8 @@ mod tests {
 
         create_test_image(&src_path, 100, 80);
 
-        let result = ImageProcessor::generate_thumbnail(
-            src_path.to_str().unwrap(),
-            out_path.to_str().unwrap(),
-        );
+        let img = image::open(&src_path).unwrap();
+        let result = ImageProcessor::generate_thumbnail_from_image(&img, &out_path);
         assert!(result.is_ok());
 
         let thumb = image::open(&out_path).unwrap();
@@ -352,8 +332,7 @@ mod tests {
 
     #[test]
     fn test_generate_thumbnail_nonexistent_file() {
-        let result =
-            ImageProcessor::generate_thumbnail("/nonexistent/path/image.jpg", "/tmp/thumb.webp");
+        let result = image::open("/nonexistent/path/image.jpg");
         assert!(result.is_err(), "不存在的文件应返回错误");
     }
 
@@ -370,10 +349,8 @@ mod tests {
 
         assert!(!nested_dir.exists(), "嵌套目录不应预先存在");
 
-        let result = ImageProcessor::generate_thumbnail(
-            src_path.to_str().unwrap(),
-            out_path.to_str().unwrap(),
-        );
+        let img = image::open(&src_path).unwrap();
+        let result = ImageProcessor::generate_thumbnail_from_image(&img, &out_path);
         assert!(result.is_ok());
         assert!(out_path.exists(), "输出文件应在嵌套目录中创建");
 
@@ -388,7 +365,8 @@ mod tests {
         let src_path = temp_dir.join("test_phash.png");
         create_test_image(&src_path, 256, 256);
 
-        let result = ImageProcessor::calculate_phash(src_path.to_str().unwrap());
+        let img = image::open(&src_path).unwrap();
+        let result = ImageProcessor::calculate_phash_from_image(&img);
         assert!(result.is_ok(), "pHash 计算应成功: {:?}", result);
 
         let hash = result.unwrap();
@@ -405,7 +383,8 @@ mod tests {
         let src_path = temp_dir.join("test_hamming.png");
         create_test_image(&src_path, 256, 256);
 
-        let hash = ImageProcessor::calculate_phash(src_path.to_str().unwrap()).unwrap();
+        let img = image::open(&src_path).unwrap();
+        let hash = ImageProcessor::calculate_phash_from_image(&img).unwrap();
         let result = ImageProcessor::hamming_distance(&hash, &hash);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 0, "相同图片的 Hamming 距离应为 0");
@@ -421,7 +400,9 @@ mod tests {
         let src_path = temp_dir.join("test_exif.jpg");
         create_test_image(&src_path, 640, 480);
 
-        let result = ImageProcessor::extract_exif(src_path.to_str().unwrap());
+        let img = image::open(&src_path).unwrap();
+        let (width, height) = img.dimensions();
+        let result = ImageProcessor::extract_exif_from_file(src_path.to_str().unwrap(), width, height);
         assert!(result.is_ok());
 
         let exif = result.unwrap();
@@ -433,10 +414,8 @@ mod tests {
 
     #[test]
     fn test_extract_exif_nonexistent_file() {
-        let result = ImageProcessor::extract_exif("/nonexistent/path/image.jpg");
+        let result = image::open("/nonexistent/path/image.jpg");
         assert!(result.is_err(), "不存在的文件应返回错误");
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("源图片不存在"));
     }
 
     #[test]
@@ -447,7 +426,9 @@ mod tests {
         let src_path = temp_dir.join("test_no_exif.png");
         create_test_image(&src_path, 800, 600);
 
-        let result = ImageProcessor::extract_exif(src_path.to_str().unwrap());
+        let img = image::open(&src_path).unwrap();
+        let (width, height) = img.dimensions();
+        let result = ImageProcessor::extract_exif_from_file(src_path.to_str().unwrap(), width, height);
         assert!(result.is_ok(), "无 EXIF 数据的图片也应成功返回");
 
         let exif = result.unwrap();

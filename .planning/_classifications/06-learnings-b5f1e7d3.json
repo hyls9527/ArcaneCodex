@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/v1.0.0-rc/06-learnings.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "项目经验与教训 (Learnings & Patterns)",
+  "summary": "Agent-facing reference documenting conventions, gotchas, and command shortcuts",
+  "scope": ["ArcaneCodex", "development practices", "Tauri 2.x", "React", "Rust", "coding conventions"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

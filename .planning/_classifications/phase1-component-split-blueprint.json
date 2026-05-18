@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Personal/Desktop/2/ArcaneCodex/docs/planning/phase1-component-split-blueprint.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Phase 1 前端组件拆分蓝图",
+  "summary": "ImageViewer、KnowledgeGraphView和GalleryPage的详细拆分方案与技术接口定义",
+  "scope": ["ImageViewer", "KnowledgeGraphView", "GalleryPage", "前端组件重构", "CSP分析", "useImageZoom", "useForceSimulation", "useGalleryActions"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

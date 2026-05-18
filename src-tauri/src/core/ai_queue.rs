@@ -433,7 +433,9 @@ impl Worker {
         let image_id = task.image_id;
         let file_path = &task.file_path;
 
-        let _ = self.update_ai_status(image_id, "processing");
+        if let Err(e) = self.update_ai_status(image_id, "processing") {
+            warn!("更新 AI 状态失败: {}", e);
+        }
 
         if !self.circuit_breaker.allow_request() {
             self.handle_ai_failure(image_id, task.retry_count, "Provider 熔断中，跳过请求")
@@ -637,7 +639,9 @@ impl Worker {
                 image_id, new_retry_count, MAX_RETRIES, backoff_ms, error_msg
             );
 
-            let _ = self.update_ai_status_with_error(image_id, "pending", error_msg);
+            if let Err(e) = self.update_ai_status_with_error(image_id, "pending", error_msg) {
+                warn!("更新 AI 状态失败: {}", e);
+            }
 
             tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
 
@@ -654,7 +658,9 @@ impl Worker {
             }
         } else {
             error!("AI 达到最大重试次数 (image_id={}): {}", image_id, error_msg);
-            let _ = self.update_ai_status_with_error(image_id, "failed", error_msg);
+            if let Err(e) = self.update_ai_status_with_error(image_id, "failed", error_msg) {
+                warn!("更新 AI 状态失败: {}", e);
+            }
             self.failed_tasks.fetch_add(1, Ordering::SeqCst);
             self.emit_progress(image_id, "failed", error_msg);
         }
@@ -749,7 +755,7 @@ impl Worker {
             let total = self.total_tasks.load(Ordering::SeqCst);
             let current = self.processed_tasks.load(Ordering::SeqCst)
                 + self.failed_tasks.load(Ordering::SeqCst);
-            let _ = app.emit(
+            if let Err(e) = app.emit(
                 "ai-progress",
                 AIProgressEvent {
                     image_id,
@@ -758,7 +764,9 @@ impl Worker {
                     total,
                     current,
                 },
-            );
+            ) {
+                warn!("发送进度事件失败: {}", e);
+            }
         }
     }
 

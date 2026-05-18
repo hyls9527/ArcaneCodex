@@ -1,0 +1,38 @@
+{
+  "granularity": "standard",
+  "phase_count": 9,
+  "workflow": {
+    "plan_first": true,
+    "require_approval": true,
+    "auto_retry_on_failure": true,
+    "test_on_completion": true
+  },
+  "conventions": {
+    "rust": {
+      "style": "Result<T, AppError>",
+      "async_pattern": "tokio::spawn_blocking for CPU-bound work",
+      "tauri_command_macro": true
+    },
+    "frontend": {
+      "component_style": "functional + hooks",
+      "state_management": "Zustand",
+      "styling": "Tailwind CSS",
+      "testing": "Vitest + React Testing Library"
+    }
+  },
+  "testing": {
+    "frontend_command": "cd frontend && npx vitest run --pool=forks",
+    "rust_check_command": "cd src-tauri && cargo check",
+    "rust_test_command": "cd src-tauri && cargo test",
+    "typecheck_command": "npx tsc --noEmit",
+    "blockers": [
+      "cargo test STATUS_ENTRYPOINT_NOT_FOUND on Windows (DLL dependency)",
+      "CI verification blocked (no GitHub Actions trigger)"
+    ]
+  },
+  "phases": {
+    "current": 9,
+    "count": 9,
+    "completed": [1, 2, 3, 4, 5, 6, 7, 8]
+  }
+}
