@@ -95,6 +95,7 @@ fn get_keyring_master_key() -> Result<[u8; 32], String> {
 }
 
 /// 获取 v4 加密密钥：优先 OS 密钥环，回退到 PBKDF2 派生
+#[allow(dead_code)]
 fn get_encryption_key_v4() -> AppResult<[u8; 32]> {
     match get_keyring_master_key() {
         Ok(key) => {
@@ -124,29 +125,38 @@ pub fn encrypt_api_key(plaintext: &str) -> AppResult<String> {
         return Ok(String::new());
     }
 
-    // v3: PBKDF2-HMAC-SHA256 + 随机 salt
-    let salt = generate_salt();
-    let key = derive_key_v3(&salt);
+    // 优先 OS 密钥环，失败则回退 PBKDF2（v4 格式）
+    let (key, salt) = match get_keyring_master_key() {
+        Ok(master_key) => {
+            // Keyring 路径：salt 为全零（不用作派生，仅占位）
+            info!("Using OS keyring for API key encryption");
+            (master_key, [0u8; SALT_LEN])
+        }
+        Err(e) => {
+            // PBKDF2 回退路径：随机 salt + derive_key_v3 派生
+            warn!("Keyring unavailable for encryption, using PBKDF2: {}", e);
+            let salt = generate_salt();
+            let key = derive_key_v3(&salt);
+            (key, salt)
+        }
+    };
+
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|e| AppError::config(format!("AES-256-GCM init failed: {}", e)))?;
 
     let nonce_bytes: [u8; 12] = rand::random();
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    match cipher.encrypt(nonce, plaintext.as_bytes()) {
-        Ok(ciphertext) => {
-            // v3 格式: enc:v3: + base64(salt[16] + nonce[12] + ciphertext)
-            let mut combined = Vec::with_capacity(SALT_LEN + 12 + ciphertext.len());
-            combined.extend_from_slice(&salt);
-            combined.extend_from_slice(&nonce_bytes);
-            combined.extend_from_slice(&ciphertext);
-            Ok(format!("{}{}", ENCRYPTION_PREFIX_V3, BASE64.encode(&combined)))
-        }
-        Err(e) => {
-            warn!("API Key 加密失败，回退到明文存储: {}", e);
-            Ok(plaintext.to_string())
-        }
-    }
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_bytes())
+        .map_err(|e| AppError::config(format!("Encryption failed: {}", e)))?;
+
+    // v4 格式: enc:v4: + base64(salt[16] + nonce[12] + ciphertext)
+    let mut combined = Vec::with_capacity(SALT_LEN + 12 + ciphertext.len());
+    combined.extend_from_slice(&salt);
+    combined.extend_from_slice(&nonce_bytes);
+    combined.extend_from_slice(&ciphertext);
+    Ok(format!("{}{}", ENCRYPTION_PREFIX_V4, BASE64.encode(&combined)))
 }
 
 pub fn decrypt_api_key(ciphertext: &str) -> AppResult<String> {
@@ -154,7 +164,44 @@ pub fn decrypt_api_key(ciphertext: &str) -> AppResult<String> {
         return Ok(String::new());
     }
 
-    if let Some(encoded) = ciphertext.strip_prefix(ENCRYPTION_PREFIX_V3) {
+    if let Some(encoded) = ciphertext.strip_prefix(ENCRYPTION_PREFIX_V4) {
+        // v4: keyring 或 PBKDF2 回退
+        match BASE64.decode(encoded) {
+            Ok(data) if data.len() > SALT_LEN + 12 => {
+                let salt = &data[..SALT_LEN];
+                let nonce = Nonce::from_slice(&data[SALT_LEN..SALT_LEN + 12]);
+                let ciphertext_only = &data[SALT_LEN + 12..];
+
+                let key = if salt.iter().all(|&b| b == 0) {
+                    // Keyring 路径：salt 全零，密钥从 keyring 获取
+                    get_keyring_master_key().map_err(|e| {
+                        AppError::config(format!("Keyring unavailable for decryption: {}", e))
+                    })?
+                } else {
+                    // PBKDF2 回退路径：salt 为真实随机值，从 machine_id 派生
+                    derive_key_v3(salt)
+                };
+
+                let cipher = Aes256Gcm::new_from_slice(&key)
+                    .map_err(|e| AppError::config(format!("AES-256-GCM init failed: {}", e)))?;
+
+                match cipher.decrypt(nonce, ciphertext_only) {
+                    Ok(plaintext) => Ok(String::from_utf8(plaintext).unwrap_or_else(|e| {
+                        warn!("API Key v4 解密 UTF-8 转换失败，已返回空值: {}", e);
+                        String::new()
+                    })),
+                    Err(e) => {
+                        warn!("API Key v4 解密失败，已返回空值，请重新配置 API Key: {}", e);
+                        Ok(String::new())
+                    }
+                }
+            }
+            _ => {
+                warn!("API Key v4 格式无效，已返回空值");
+                Ok(String::new())
+            }
+        }
+    } else if let Some(encoded) = ciphertext.strip_prefix(ENCRYPTION_PREFIX_V3) {
         // v3: PBKDF2-HMAC-SHA256 派生密钥，salt 嵌入密文
         match BASE64.decode(encoded) {
             Ok(data) if data.len() > SALT_LEN + 12 => {
@@ -222,7 +269,9 @@ pub fn decrypt_api_key(ciphertext: &str) -> AppResult<String> {
 
 #[allow(dead_code)]
 pub fn is_encrypted(value: &str) -> bool {
-    value.starts_with(ENCRYPTION_PREFIX_V3) || value.starts_with(ENCRYPTION_PREFIX_V2)
+    value.starts_with(ENCRYPTION_PREFIX_V4)
+        || value.starts_with(ENCRYPTION_PREFIX_V3)
+        || value.starts_with(ENCRYPTION_PREFIX_V2)
 }
 
 #[cfg(test)]
