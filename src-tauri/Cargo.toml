@@ -72,7 +72,7 @@ base64 = "0.22"
 whoami = "1"
 rand = "0.9"
 pbkdf2 = { version = "0.12", features = ["hmac"] }
-hmac = "0.12"
+hmac = "0.13"
 
 # 操作系统密钥环 (OS keyring)
 keyring = "2"
