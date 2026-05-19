@@ -19,6 +19,8 @@ vendor/
 dist/
 dist-ssr/
 target/
+target-check/
+target-local/
 *.exe
 *.dll
 *.so
